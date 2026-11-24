@@ -12,6 +12,7 @@ const FICON = {
   caretR: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>',
   caretD: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>',
   plus: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
+  team: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="2.5"/><circle cx="5" cy="19" r="2.5"/><circle cx="19" cy="19" r="2.5"/><path d="M12 7.5V12M12 12l-5.5 4.5M12 12l5.5 4.5"/></svg>',
   refresh: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>'
 };
 
@@ -30,6 +31,7 @@ async function refreshFiles() {
   if (S.cwd) {
     await loadDir('');
     await loadDir(DRAFTS);
+    await loadDir(TEAMS);
     for (const rel of [...filesUI.expanded]) await loadDir(rel);
   }
   renderFiles();
@@ -68,6 +70,7 @@ function renderFiles() {
   }
   const drafts = (filesUI.entries[DRAFTS] || []).filter((e) => !e.dir);
   const folderName = S.cwd.split(/[\\/]/).filter(Boolean).pop();
+  const teams = (filesUI.entries[TEAMS] || []).filter((e) => !e.dir && /\.json$/i.test(e.name));
   el.innerHTML =
     '<div class="files-head"><span class="section-label">Drafts</span><span class="grow"></span>' +
     '<button type="button" class="icon-btn" data-f="new-draft" aria-label="New draft" title="New draft">' + FICON.plus + '</button></div>' +
@@ -75,6 +78,10 @@ function renderFiles() {
     (drafts.length
       ? '<div class="file-list">' + drafts.map((e) => '<button type="button" class="file-row" data-open-file="' + esc(e.rel) + '"><span class="caret-space"></span>' + FICON.file + '<span>' + esc(e.name) + '</span></button>').join('') + '</div>'
       : '<p class="muted small">No drafts yet. Use + to write one, or "Save as draft" on any reply.</p>') +
+    '<div class="files-head"><span class="section-label">Teams</span></div>' +
+    (teams.length
+      ? '<div class="file-list">' + teams.map((e) => '<button type="button" class="file-row" data-open-team="' + esc(e.rel) + '" title="Open this team on the canvas"><span class="caret-space"></span>' + FICON.team + '<span>' + esc(e.name.replace(/\.team\.json$|\.json$/i, '')) + '</span></button>').join('') + '</div>'
+      : '<p class="muted small">No saved teams yet. Use Save team at the top.</p>') +
     '<div class="files-head"><span class="section-label" title="' + esc(S.cwd) + '">' + esc(folderName) + '</span><span class="grow"></span>' +
     '<button type="button" class="icon-btn" data-f="new-file" aria-label="New file" title="New file">' + FICON.plus + '</button>' +
     '<button type="button" class="icon-btn" data-f="new-folder" aria-label="New folder" title="New folder">' + FICON.folder + '</button>' +

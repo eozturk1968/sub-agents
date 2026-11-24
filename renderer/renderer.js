@@ -57,7 +57,7 @@ const installed = {};      // harness -> bool
 const ui = {
   query: '', pending: null, authMode: 'key', keyInput: '', busyLogin: false, loginUrl: null,
   modalError: '', drag: null, runs: {},
-  open: [], bubbles: [], unread: new Set(), drafts: {}, roleEdit: null, editor: null,
+  open: [], bubbles: [], unread: new Set(), drafts: {}, roleEdit: null, editor: null, teamConfirm: null,
   attach: {} // modelId -> [{ name, dataUrl }] waiting to be sent
 };
 
@@ -130,6 +130,7 @@ function renderToolbar() {
   $('#status').innerHTML = S.nodes.length
     ? '<span class="dot" aria-hidden="true"></span>' + (lead ? 'Leader: <span class="mono">' + esc(lead.modelId) + '</span> · ' + others + ' other agent' + (others === 1 ? '' : 's') : '')
     : 'No agents yet';
+  $('#status').innerHTML += teamLabel();
   const f = S.cwd ? S.cwd.split(/[\\/]/).filter(Boolean).pop() : 'Home folder';
   $('#folder').textContent = 'Folder: ' + f;
   $('#folder').title = S.cwd || 'Agents work in your home folder. Click to choose a project folder.';
@@ -256,6 +257,7 @@ function renderModal() {
   const el = $('#modal');
   if (ui.roleEdit) { renderRoleEditor(); return; }
   if (ui.editor) { renderEditor(); return; }
+  if (ui.teamConfirm) { renderTeamConfirm(); return; }
   const p = ui.pending;
   if (!p) { el.innerHTML = ''; return; }
   const m = model(p.id);
@@ -698,6 +700,7 @@ api.onLoginUrl((url) => {
 // ---------- Events ----------
 function bind() {
   bindFiles();
+  bindTeams();
   // A file dropped outside a drop area would replace the app with that file. Block it.
   document.addEventListener('dragover', (e) => { if (hasFiles(e)) e.preventDefault(); });
   document.addEventListener('drop', (e) => { if (hasFiles(e)) e.preventDefault(); });
@@ -768,6 +771,7 @@ function bind() {
     ui.drag.el.classList.remove('dragging');
     ui.drag = null;
     save();
+    renderToolbar();
   };
   nodesEl.addEventListener('pointerup', endDrag);
   nodesEl.addEventListener('pointercancel', endDrag);

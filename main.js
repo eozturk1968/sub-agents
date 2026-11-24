@@ -175,6 +175,57 @@ ipcMain.handle('chat:send', (_e, opts) => {
   return harness.run(opts, keys, (text) => win && win.webContents.send('chat:chunk', { runId: opts.runId, text }));
 });
 ipcMain.handle('bridge:script', () => SCRIPT);
+// ---------- Team files ----------
+// A team file holds the canvas layout, the leader setting and each agent's role file.
+// It never holds API keys or sign-ins.
+function teamDir(cwd) { return path.join(cwd || require('os').homedir(), '.sub-agents', 'teams'); }
+
+ipcMain.handle('team:save', async (_e, cwd, team, suggested) => {
+  try {
+    const dir = teamDir(cwd);
+    fs.mkdirSync(dir, { recursive: true });
+    const r = await dialog.showSaveDialog(win, {
+      title: 'Save team',
+      defaultPath: path.join(dir, (suggested || 'my-team') + '.team.json'),
+      filters: [{ name: 'Sub-Agents team', extensions: ['json'] }],
+      properties: ['createDirectory', 'showOverwriteConfirmation']
+    });
+    if (r.canceled || !r.filePath) return { ok: false, canceled: true };
+    const ids = [...new Set((team.nodes || []).map((n) => n.modelId))];
+    const roleTexts = {};
+    ids.forEach((id) => { const rr = roles.readRole(cwd, id); if (rr.exists) roleTexts[id] = rr.text; });
+    const name = path.basename(r.filePath).replace(/\.team\.json$|\.json$/i, '');
+    const data = { app: 'sub-agents', version: 1, name, savedAt: new Date().toISOString(), ...team, roles: roleTexts };
+    fs.writeFileSync(r.filePath, JSON.stringify(data, null, 2) + '\n');
+    return { ok: true, path: r.filePath, name };
+  } catch (e) { return { ok: false, error: e.message }; }
+});
+
+ipcMain.handle('team:pick', async (_e, cwd) => {
+  try {
+    const dir = teamDir(cwd);
+    const r = await dialog.showOpenDialog(win, {
+      title: 'Open team',
+      defaultPath: fs.existsSync(dir) ? dir : (cwd || undefined),
+      filters: [{ name: 'Sub-Agents team', extensions: ['json'] }],
+      properties: ['openFile']
+    });
+    if (r.canceled || !r.filePaths[0]) return { ok: false, canceled: true };
+    return { ok: true, path: r.filePaths[0], text: fs.readFileSync(r.filePaths[0], 'utf8') };
+  } catch (e) { return { ok: false, error: e.message }; }
+});
+
+// Write role files from a team into the project. Never overwrite a role the project already has.
+ipcMain.handle('team:roles', (_e, cwd, roleTexts) => {
+  const created = []; const kept = [];
+  for (const [id, text] of Object.entries(roleTexts || {})) {
+    const cur = roles.readRole(cwd, id);
+    if (!cur.exists) { roles.writeRole(cwd, id, text); created.push(id); }
+    else if (cur.text.trim() !== String(text).trim()) kept.push(id);
+  }
+  return { created, kept };
+});
+
 ipcMain.handle('fs:list', (_e, cwd, rel) => files.list(cwd, rel));
 ipcMain.handle('fs:read', (_e, cwd, rel) => files.read(cwd, rel));
 ipcMain.handle('fs:write', (_e, cwd, rel, text) => files.write(cwd, rel, text));
