@@ -2,6 +2,8 @@
 
 A desktop app for building teams of AI models. Drag models onto a canvas: the first one becomes the group leader, and the others become its sub-agents. Sub-agents can have their own sub-agents too, so a team can be several levels deep.
 
+![Sub-Agents: a Claude Opus leader with nested Claude, Codex and Antigravity sub-agents on the canvas](docs/screenshot.png)
+
 Each model runs in its own company's tool:
 
 | Models | Runs in | Sign-in |
