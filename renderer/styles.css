@@ -282,3 +282,11 @@ p { margin: 0; }
 .notice.bad { background: #FFFBEB; border-color: #FDE68A; color: #78350F; }
 .status { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .status .dot { display: inline-block; margin-right: 6px; vertical-align: middle; }
+
+/* Copyright line, bottom-right of the canvas */
+.main { position: relative; }
+.copyright {
+  position: absolute; right: 32px; bottom: 28px; margin: 0;
+  font-size: 11px; color: #A3A9B5; letter-spacing: 0.01em;
+  pointer-events: none; user-select: none;
+}
