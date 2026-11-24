@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
+<title>Sub-Agents</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="col gap4">
+      <h1 class="title">All AI models</h1>
+      <p class="muted small">Drag a model onto the canvas, or click to add it</p>
+    </div>
+    <label class="search">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+      <span class="sr">Search models</span>
+      <input id="search" type="search" placeholder="Filter by name">
+    </label>
+    <ul id="model-list" class="model-list"></ul>
+    <div class="grow"></div>
+    <div id="connected" class="col gap8"></div>
+  </aside>
+
+  <main class="main">
+    <div class="toolbar">
+      <div id="status" class="status"></div>
+      <button id="folder" class="btn" type="button"></button>
+      <label class="check"><input id="allow-run" type="checkbox"> Let leader run sub-agents</label>
+      <button id="clear" class="btn" type="button">Clear canvas</button>
+    </div>
+    <div id="canvas" class="canvas">
+      <svg id="wires" class="wires" aria-hidden="true"></svg>
+      <div id="nodes"></div>
+      <div id="empty" class="empty">Drag a model here. The first one becomes the leader.</div>
+    </div>
+  </main>
+</div>
+
+<div id="modal"></div>
+<section id="chat" class="chat" aria-label="Chat" hidden></section>
+
+<script src="renderer.js"></script>
+</body>
+</html>
