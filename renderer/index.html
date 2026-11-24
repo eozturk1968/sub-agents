@@ -9,6 +9,11 @@
 <body>
 <div class="app">
   <aside class="sidebar">
+    <div class="tabs" role="tablist" aria-label="Sidebar">
+      <button type="button" role="tab" id="tab-models" aria-selected="true" aria-controls="panel-models">Models</button>
+      <button type="button" role="tab" id="tab-files" aria-selected="false" aria-controls="panel-files">Files</button>
+    </div>
+    <div id="panel-models" class="tab-panel" role="tabpanel" aria-labelledby="tab-models">
     <div class="col gap4">
       <h1 class="title">All AI models</h1>
       <p class="muted small">Drag a model onto the canvas, or click to add it</p>
@@ -21,6 +26,8 @@
     <ul id="model-list" class="model-list"></ul>
     <div class="grow"></div>
     <div id="connected" class="col gap8"></div>
+    </div>
+    <div id="panel-files" class="tab-panel" role="tabpanel" aria-labelledby="tab-files" hidden></div>
   </aside>
 
   <main class="main">
@@ -41,6 +48,7 @@
 <div id="modal"></div>
 <div id="dock" class="dock"><div id="bubbles" class="bubbles" aria-label="Minimized chats"></div></div>
 
+<script src="files.js"></script>
 <script src="renderer.js"></script>
 </body>
 </html>

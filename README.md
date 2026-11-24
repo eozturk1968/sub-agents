@@ -40,6 +40,8 @@ npm start
 
 - **Add a model:** drag it from the list onto the canvas, or click it. The first time, it asks how to sign in.
 - **Chat:** the chat button on a box opens that model's chat window. Chats work like Messenger: each one gets its own window along the bottom, up to 3 at a time. Opening a 4th shrinks the oldest into a round bubble on the left; click a bubble to open it again. A blue dot means a new message, orange means it's working. Each window can be minimized, made bigger, resized from its corner, or cleared.
+- **Files:** the **Files** tab in the sidebar shows your project folder. Click a file to open it: text and code open in an editor (**Save** or Cmd+S; change the path to save a copy under a new name), images show as pictures, and anything else can be opened in its Mac app. **+** makes a new file or folder. Everything stays inside the project folder.
+- **Drafts:** notes and prompts you're working on, kept in `your-project/.sub-agents/drafts/`. **Send to chat** puts a draft into an agent's message box (for other files it adds a note pointing the agent to the file; images get attached). Every reply has a **Save as draft** link.
 - **Images:** attach PNG, JPG, GIF or WebP images with the paperclip, by pasting (Cmd+V), or by dropping them onto a chat window. They're saved in `your-project/.sub-agents/attachments/`. Codex gets them with `--image`; Claude Code and Antigravity get the file paths and open the images themselves.
 - **Role and memory:** the document button on a box (or in its chat window) opens that agent's role file. See below.
 - **Build a team:** each box has a **Reports to** menu. You can also drop a model from the list onto a box to make it that box's sub-agent. **Make leader** changes the top of the team.

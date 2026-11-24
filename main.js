@@ -5,6 +5,7 @@ const http = require('http');
 const crypto = require('crypto');
 const harness = require('./harness');
 const roles = require('./roles');
+const files = require('./files');
 
 let win;
 
@@ -174,6 +175,13 @@ ipcMain.handle('chat:send', (_e, opts) => {
   return harness.run(opts, keys, (text) => win && win.webContents.send('chat:chunk', { runId: opts.runId, text }));
 });
 ipcMain.handle('bridge:script', () => SCRIPT);
+ipcMain.handle('fs:list', (_e, cwd, rel) => files.list(cwd, rel));
+ipcMain.handle('fs:read', (_e, cwd, rel) => files.read(cwd, rel));
+ipcMain.handle('fs:write', (_e, cwd, rel, text) => files.write(cwd, rel, text));
+ipcMain.handle('fs:mkdir', (_e, cwd, rel) => files.mkdir(cwd, rel));
+ipcMain.handle('fs:exists', (_e, cwd, rel) => files.exists(cwd, rel));
+ipcMain.handle('fs:open', (_e, cwd, rel) => files.open(cwd, rel));
+ipcMain.handle('fs:reveal', (_e, cwd, rel) => files.reveal(cwd, rel));
 
 // Save chat images into PROJECT/.sub-agents/attachments so every CLI can read them.
 const IMAGE_EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };

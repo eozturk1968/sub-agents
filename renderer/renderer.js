@@ -57,7 +57,7 @@ const installed = {};      // harness -> bool
 const ui = {
   query: '', pending: null, authMode: 'key', keyInput: '', busyLogin: false, loginUrl: null,
   modalError: '', drag: null, runs: {},
-  open: [], bubbles: [], unread: new Set(), drafts: {}, roleEdit: null,
+  open: [], bubbles: [], unread: new Set(), drafts: {}, roleEdit: null, editor: null,
   attach: {} // modelId -> [{ name, dataUrl }] waiting to be sent
 };
 
@@ -255,6 +255,7 @@ function openModal(id, opts) {
 function renderModal() {
   const el = $('#modal');
   if (ui.roleEdit) { renderRoleEditor(); return; }
+  if (ui.editor) { renderEditor(); return; }
   const p = ui.pending;
   if (!p) { el.innerHTML = ''; return; }
   const m = model(p.id);
@@ -525,11 +526,13 @@ function renderMessages(id) {
   if (!box) return;
   const list = chats[id] || [];
   box.innerHTML = list.length
-    ? list.map((x) => '<div class="msg ' + x.role + '">' +
+    ? list.map((x, i) => '<div class="msg ' + x.role + '">' +
         (x.role === 'task' ? '<span class="msg-label">Task from ' + esc(x.from || 'the leader') + '</span>' : '') +
         (x.role === 'note' ? '<span class="msg-label">Saved to memory</span>' : '') +
         (x.images && x.images.length ? '<div class="msg-images">' + x.images.map((im) => '<img src="' + im.dataUrl + '" alt="' + esc(im.name) + '">').join('') + '</div>' : '') +
-        esc(x.text || (x.role === 'assistant' ? '…' : '')) + '</div>').join('')
+        esc(x.text || (x.role === 'assistant' ? '…' : '')) +
+        (x.role === 'assistant' && x.text && !ui.runs[id] ? '<button type="button" class="msg-save" data-savereply="' + i + '">Save as draft</button>' : '') +
+        '</div>').join('')
     : '<p class="muted small center">Messages go to ' + esc(hOf(id).name) + ', working in ' + esc(S.cwd || 'your home folder') + '.</p>';
   box.scrollTop = box.scrollHeight;
 }
@@ -694,6 +697,7 @@ api.onLoginUrl((url) => {
 
 // ---------- Events ----------
 function bind() {
+  bindFiles();
   // A file dropped outside a drop area would replace the app with that file. Block it.
   document.addEventListener('dragover', (e) => { if (hasFiles(e)) e.preventDefault(); });
   document.addEventListener('drop', (e) => { if (hasFiles(e)) e.preventDefault(); });
@@ -842,6 +846,8 @@ function bind() {
     if (ob) { openChat(ob.dataset.open); return; }
     const cb = e.target.closest('[data-close]');
     if (cb) { closeChat(cb.dataset.close); return; }
+    const sr = e.target.closest('[data-savereply]');
+    if (sr) { saveReplyAsDraft(sr.closest('.chat').dataset.id, Number(sr.dataset.savereply)); return; }
     const ux = e.target.closest('[data-unattach]');
     if (ux) {
       const wid = ux.closest('.chat').dataset.id;
@@ -870,7 +876,7 @@ function bind() {
 
   $('#folder').addEventListener('click', async () => {
     const p = await api.pickFolder();
-    if (p) { S.cwd = p; save(); renderToolbar(); renderAllChats(); }
+    if (p) { S.cwd = p; save(); renderToolbar(); renderAllChats(); filesUI.expanded.clear(); refreshFiles(); }
   });
   $('#allow-run').addEventListener('change', (e) => {
     S.allowLeaderRun = e.target.checked;
