@@ -1,5 +1,5 @@
 'use strict';
-/* global api, S, ui, $, esc, model, shortName, uniqueAgentName, fixTree, save, renderNodes, renderList, renderAllChats, renderToolbar, renderModal, refreshFiles, ICON */
+/* global api, S, ui, $, esc, model, shortName, uniqueAgentName, view, applyView, fitAll, fixTree, save, renderNodes, renderList, renderAllChats, renderToolbar, renderModal, refreshFiles, ICON */
 // Save the canvas as a named team file, and open team files again.
 // Loaded before renderer.js; everything here runs after renderer.js has set up.
 
@@ -34,7 +34,7 @@ function notice(text, kind) {
 
 async function saveTeam() {
   if (!S.nodes.length) { notice('Add some agents to the canvas before saving a team.', 'bad'); return false; }
-  const r = await api.saveTeam(S.cwd, teamLayout(), S.teamName || 'my-team');
+  const r = await api.saveTeam(S.cwd, Object.assign(teamLayout(), { view: view() }), S.teamName || 'my-team');
   if (r.canceled) return false;
   if (!r.ok) { notice('Could not save the team: ' + r.error, 'bad'); return false; }
   S.teamName = r.name;
@@ -89,6 +89,10 @@ async function loadTeam(team) {
   renderList();
   renderAllChats();
   renderToolbar();
+  // Show the team where it was saved, or fit it on screen for older team files.
+  const tv = team.view;
+  if (tv && isFinite(tv.x) && isFinite(tv.y) && isFinite(tv.z) && tv.z > 0) { S.view = { x: tv.x, y: tv.y, z: tv.z }; applyView(); save(); }
+  else fitAll();
 
   const rr = await api.applyTeamRoles(S.cwd, roleTexts);
   const parts = ['Opened team "' + S.teamName + '".'];

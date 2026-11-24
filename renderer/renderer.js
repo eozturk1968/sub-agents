@@ -200,10 +200,6 @@ function renderNodes() {
 
 function renderWires() {
   const svg = $('#wires');
-  let w = 0, hgt = 0;
-  S.nodes.forEach((n) => { w = Math.max(w, n.x + 320); hgt = Math.max(hgt, n.y + 320); });
-  svg.style.width = w ? w + 'px' : '';
-  svg.style.height = hgt ? hgt + 'px' : '';
   const el = (k) => document.querySelector('.node[data-key="' + k + '"]');
   svg.innerHTML = S.nodes.filter((n) => n.key !== S.leader && nodeByKey(n.parent)).map((n) => {
     const p = nodeByKey(n.parent);
@@ -226,7 +222,7 @@ function placeUnder(n) {
   const p = nodeByKey(n.parent);
   if (!p) return;
   const i = childrenOf(p.key).filter((c) => c.key !== n.key).length;
-  n.x = Math.max(0, p.x + i * 300);
+  n.x = p.x + i * 300;
   n.y = p.y + 260;
 }
 
@@ -234,13 +230,15 @@ function addNode(id, x, y, parent) {
   if (x == null) {
     const p = nodeByKey(parent != null ? parent : S.leader);
     const sib = p ? childrenOf(p.key).length : 0;
-    x = p ? p.x + sib * 300 : 40;
-    y = p ? p.y + 260 : 40;
+    // First agent goes near the top-left of what's on screen right now.
+    const v = view();
+    x = p ? p.x + sib * 300 : Math.round(-v.x / v.z) + 40;
+    y = p ? p.y + 260 : Math.round(-v.y / v.z) + 40;
   }
   const key = S.nextKey++;
   const hasLeader = !!leaderNode();
   const name = uniqueAgentName(shortName(id));
-  S.nodes.push({ key, modelId: id, name, x: Math.max(0, x), y: Math.max(0, y), parent: hasLeader ? (nodeByKey(parent) ? parent : S.leader) : null });
+  S.nodes.push({ key, modelId: id, name, x: Math.round(x), y: Math.round(y), parent: hasLeader ? (nodeByKey(parent) ? parent : S.leader) : null });
   if (!hasLeader) S.leader = key;
   fixTree();
   save();
@@ -764,6 +762,7 @@ async function migrateAgents() {
 
 // ---------- Events ----------
 function bind() {
+  bindView();
   bindFiles();
   bindTeams();
   // A file dropped outside a drop area would replace the app with that file. Block it.
@@ -806,10 +805,8 @@ function bind() {
     if (!model(id)) return;
     const target = e.target.closest && e.target.closest('.node');
     if (target) { request(id, null, null, Number(target.dataset.key)); return; }
-    const r = cv.getBoundingClientRect();
-    request(id,
-      Math.max(0, Math.round(e.clientX - r.left + cv.scrollLeft - 140)),
-      Math.max(0, Math.round(e.clientY - r.top + cv.scrollTop - 30)));
+    const w = screenToWorld(e.clientX, e.clientY);
+    request(id, Math.round(w.x - 140), Math.round(w.y - 30));
   });
 
   const nodesEl = $('#nodes');
@@ -819,14 +816,14 @@ function bind() {
     if (!el) return;
     const n = S.nodes.find((o) => String(o.key) === el.dataset.key);
     ui.drag = { n, el, sx: e.clientX, sy: e.clientY, ox: n.x, oy: n.y };
-    el.setPointerCapture(e.pointerId);
+    try { el.setPointerCapture(e.pointerId); } catch (err) { /* pointer already gone */ }
     el.classList.add('dragging');
   });
   nodesEl.addEventListener('pointermove', (e) => {
     const d = ui.drag;
     if (!d) return;
-    d.n.x = Math.max(0, d.ox + e.clientX - d.sx);
-    d.n.y = Math.max(0, d.oy + e.clientY - d.sy);
+    d.n.x = Math.round(d.ox + (e.clientX - d.sx) / view().z);
+    d.n.y = Math.round(d.oy + (e.clientY - d.sy) / view().z);
     d.el.style.left = d.n.x + 'px';
     d.el.style.top = d.n.y + 'px';
     renderWires();
@@ -999,6 +996,7 @@ async function init() {
   renderList();
   renderConnected();
   renderNodes();
+  applyView();
   renderAllChats();
   await Promise.all(Object.keys(HARNESS).map(async (h) => { installed[h] = await api.checkHarness(h); }));
   renderList();

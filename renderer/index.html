@@ -41,8 +41,17 @@
     </div>
     <div id="notice" class="notice" role="status" hidden></div>
     <div id="canvas" class="canvas">
-      <svg id="wires" class="wires" aria-hidden="true"></svg>
-      <div id="nodes"></div>
+      <div id="world" class="world">
+        <svg id="wires" class="wires" aria-hidden="true"></svg>
+        <div id="nodes"></div>
+      </div>
+      <div id="view-controls" class="view-controls" role="group" aria-label="Zoom">
+        <button type="button" class="vbtn" data-v="out" aria-label="Zoom out" title="Zoom out (Cmd −)">−</button>
+        <button type="button" class="vbtn pct" data-v="reset" id="zoom-pct" title="Reset to 100% (Cmd 0)">100%</button>
+        <button type="button" class="vbtn" data-v="in" aria-label="Zoom in" title="Zoom in (Cmd +)">+</button>
+        <button type="button" class="vbtn fit" data-v="fit" title="Show all agents (Space)">Fit</button>
+        <label class="scroll-zooms" title="On: scrolling zooms, like LTspice. Off: two-finger scroll moves, pinch zooms."><input type="checkbox" id="scroll-zooms"> Scroll zooms</label>
+      </div>
       <div id="empty" class="empty">Drag a model here. The first one becomes the leader.</div>
     </div>
     <p class="copyright">Copyright (c) 2026 Erdinc Ozturk. All rights reserved.</p>
@@ -52,6 +61,7 @@
 <div id="modal"></div>
 <div id="dock" class="dock"><div id="bubbles" class="bubbles" aria-label="Minimized chats"></div></div>
 
+<script src="view.js"></script>
 <script src="files.js"></script>
 <script src="teams.js"></script>
 <script src="renderer.js"></script>
