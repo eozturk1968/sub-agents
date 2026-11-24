@@ -1,0 +1,51 @@
+name: Release
+
+# Push a tag like v0.1.0 and GitHub builds the Mac .dmg and the Windows .exe,
+# then publishes them on the Releases page.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            script: dist:mac
+            files: |
+              dist/*.dmg
+          - os: windows-latest
+            script: dist:win
+            files: |
+              dist/*.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+      - run: npm ci
+      # Unsigned build: no Apple or Windows signing certificate yet.
+      - run: npm run ${{ matrix.script }} -- --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Sub-Agents ${{ github.ref_name }}
+          files: ${{ matrix.files }}
+          body: |
+            **Mac (Apple Silicon M1–M4):** download `the `.dmg` ending in `arm64``
+            **Mac (Intel):** download the `.dmg` without `arm64`
+            **Windows:** download `Sub-Agents Setup ….exe`
+
+            These builds are unsigned. On first launch:
+            - Mac: right-click the app, choose Open, then Open again (or System Settings > Privacy & Security > Open Anyway).
+            - Windows: if SmartScreen appears, click More info, then Run anyway.
+
+            You also need at least one AI tool installed and signed in (Claude Code, Codex or Antigravity). See the README.
