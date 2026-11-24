@@ -1,5 +1,5 @@
 'use strict';
-/* global api, S, ui, $, esc, model, shortName, uniqueAgentName, view, applyView, fitAll, fixTree, save, renderNodes, renderList, renderAllChats, renderToolbar, renderModal, refreshFiles, ICON */
+/* global api, S, ui, $, esc, model, shortName, cleanAgentName, currentTab, newTab, isBlankTab, uniqueAgentName, view, applyView, fitAll, fixTree, save, renderNodes, renderList, renderAllChats, renderToolbar, renderModal, refreshFiles, ICON */
 // Save the canvas as a named team file, and open team files again.
 // Loaded before renderer.js; everything here runs after renderer.js has set up.
 
@@ -14,8 +14,20 @@ function teamLayout() {
     }))
   };
 }
-const layoutKey = () => JSON.stringify(teamLayout());
-const teamDirty = () => S.nodes.length > 0 && layoutKey() !== (S.teamSaved || '');
+// Unsaved changes: the agents and wiring differ from the last saved team file.
+// (allowLeaderRun is an app-wide setting now, so it doesn't count.)
+function layoutKeyOf(t) {
+  return JSON.stringify({ leader: t.leader, nodes: (t.nodes || []).map((n) => ({
+    key: n.key, modelId: n.modelId, name: n.name, x: Math.round(n.x), y: Math.round(n.y), parent: n.parent == null ? null : n.parent
+  })) });
+}
+function savedKeyOf(t) {
+  if (!t.teamSaved) return '';
+  try { const o = JSON.parse(t.teamSaved); return JSON.stringify({ leader: o.leader, nodes: o.nodes }); } catch (e) { return ''; }
+}
+const teamDirtyOf = (t) => (t.nodes || []).length > 0 && layoutKeyOf(t) !== savedKeyOf(t);
+const layoutKey = () => layoutKeyOf(S);
+const teamDirty = () => teamDirtyOf(S);
 
 function teamLabel() {
   if (!S.teamName) return S.nodes.length ? ' · <span class="muted">not saved as a team</span>' : '';
@@ -34,11 +46,14 @@ function notice(text, kind) {
 
 async function saveTeam() {
   if (!S.nodes.length) { notice('Add some agents to the canvas before saving a team.', 'bad'); return false; }
-  const r = await api.saveTeam(S.cwd, Object.assign(teamLayout(), { view: view() }), S.teamName || 'my-team');
+  const tab = currentTab();
+  const suggested = S.teamName || (tab && !/^Team \d+$/.test(tab.title) ? tab.title : 'my-team');
+  const r = await api.saveTeam(S.cwd, Object.assign(teamLayout(), { view: view() }), suggested);
   if (r.canceled) return false;
   if (!r.ok) { notice('Could not save the team: ' + r.error, 'bad'); return false; }
   S.teamName = r.name;
   S.teamSaved = layoutKey();
+  if (tab) tab.title = r.name;
   save();
   renderToolbar();
   const inProject = S.cwd && r.path.startsWith(S.cwd);
@@ -54,18 +69,22 @@ function parseTeam(text) {
   return t;
 }
 
-function requestLoad(team) {
-  if (teamDirty()) { ui.teamConfirm = { team }; renderModal(); return; }
-  loadTeam(team);
-}
+// A team always opens in its own tab (or in the current tab if that one is still blank).
+function requestLoad(team) { loadTeam(team); }
 
 async function loadTeam(team) {
+  if (!isBlankTab(currentTab())) newTab(team.name || 'team');
+  else currentTab().title = team.name || 'team';
   const known = team.nodes.filter((n) => model(n.modelId));
   const skipped = [...new Set(team.nodes.filter((n) => !model(n.modelId)).map((n) => n.modelId))];
   S.nodes = [];
+  const renamed = [];
   known.forEach((n) => {
+    const want = n.name || shortName(n.modelId);
+    const name = uniqueAgentName(want);
+    if (name !== cleanAgentName(want)) renamed.push(want + ' → ' + name);
     S.nodes.push({
-      key: Number(n.key), modelId: n.modelId, name: uniqueAgentName(n.name || shortName(n.modelId)),
+      key: Number(n.key), modelId: n.modelId, name,
       x: Number(n.x) || 0, y: Number(n.y) || 0, parent: n.parent == null ? null : Number(n.parent)
     });
   });
@@ -80,7 +99,6 @@ async function loadTeam(team) {
   const leader = Number(team.leader);
   S.leader = S.nodes.some((n) => n.key === leader) ? leader : (S.nodes[0] ? S.nodes[0].key : null);
   S.nextKey = Math.max(0, ...S.nodes.map((n) => n.key)) + 1;
-  S.allowLeaderRun = !!team.allowLeaderRun;
   fixTree();
   S.teamName = team.name || 'team';
   S.teamSaved = layoutKey();
@@ -98,6 +116,7 @@ async function loadTeam(team) {
   const parts = ['Opened team "' + S.teamName + '".'];
   if (rr.created.length) parts.push('Added role files for ' + rr.created.length + ' agent' + (rr.created.length === 1 ? '' : 's') + '.');
   if (rr.kept.length) parts.push('Kept this project\'s own roles for: ' + rr.kept.join(', ') + '.');
+  if (renamed.length) parts.push('Renamed agents already open in another tab: ' + renamed.join(', ') + '.');
   if (skipped.length) parts.push('Skipped models not in models.json: ' + skipped.join(', ') + '.');
   notice(parts.join(' '), skipped.length ? 'bad' : 'ok');
   refreshFiles();

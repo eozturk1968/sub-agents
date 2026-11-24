@@ -79,9 +79,24 @@ function modelsFile() {
   return path.join(__dirname, 'models.json');
 }
 
+// Each open team tab has its own canvas. Older saves had one canvas at the top level.
+function tabsOf(state) {
+  return Array.isArray(state.tabs) && state.tabs.length ? state.tabs : [state];
+}
+// Find an agent by name in any open tab. Names are unique across tabs.
+function findAgent(state, agentName) {
+  for (const tab of tabsOf(state)) {
+    const nodes = tab.nodes || [];
+    const node = nodes.find((n) => (n.name || n.modelId) === agentName) || nodes.find((n) => n.modelId === agentName);
+    if (node) return { tab, node };
+  }
+  return null;
+}
+const allAgentNames = (state) => tabsOf(state).flatMap((t) => (t.nodes || []).map((n) => n.name || n.modelId));
+
 // Team info for a model on the canvas: its boss and its signed-in sub-agents.
-function teamFor(state, list, agentName) {
-  const nodes = state.nodes || [];
+function teamFor(state, tab, list, agentName) {
+  const nodes = tab.nodes || [];
   const methods = state.methods || {};
   const keys = loadKeys();
   const ready = (id) => {
@@ -126,9 +141,10 @@ function startBridge() {
       const state = readJson(file('state.json'), {});
       // Sub-agents are called by agent name (older callers sent a model id).
       const agentName = String(p.agent || p.modelId || '');
-      const nodes = state.nodes || [];
-      const node = nodes.find((n) => (n.name || n.modelId) === agentName) || nodes.find((n) => n.modelId === agentName);
-      if (!node) { res.writeHead(404); res.end('No agent named ' + agentName + ' on the canvas. Agents: ' + nodes.map((n) => n.name || n.modelId).join(', ')); return; }
+      const found = findAgent(state, agentName);
+      if (!found) { res.writeHead(404); res.end('No agent named ' + agentName + ' on the canvas. Agents: ' + allAgentNames(state).join(', ')); return; }
+      const { tab, node } = found;
+      const cwd = tab.cwd || null;
       const name = node.name || node.modelId;
       const m = list.find((x) => x.id === node.modelId);
       if (!m) { res.writeHead(404); res.end(node.modelId + ' is not in models.json.'); return; }
@@ -139,10 +155,10 @@ function startBridge() {
       if (method === 'key') { const all = loadKeys(); if (all[provider]) keys[provider] = all[provider]; }
 
       const task = String(p.task || '');
-      const team = teamFor(state, list, name);
+      const team = teamFor(state, tab, list, name);
       // A sub-agent with its own sub-agents gets the same team instructions as the leader.
       const canRun = team.kids.length > 0 && (m.harness === 'claude' || !!state.allowLeaderRun);
-      const prompt = roles.rolePrompt(state.cwd, name) + '\n\n' +
+      const prompt = roles.rolePrompt(cwd, name) + '\n\n' +
         (canRun ? teamBrief(team.kids) + '\n\n' : '') +
         'Task from the agent you report to:\n' + task;
 
@@ -151,7 +167,7 @@ function startBridge() {
       send('sub:start', { callId, agent: name, task, from: team.parent ? (team.parent.name || team.parent.modelId) : 'leader' });
       const r = await harness.run(
         {
-          runId: callId, harness: m.harness, model: m.model, prompt, cwd: state.cwd,
+          runId: callId, harness: m.harness, model: m.model, prompt, cwd,
           leaderTools: canRun && m.harness === 'claude' ? claudeLeaderTools(state) : null,
           fullAccess: canRun && m.harness !== 'claude'
         },
@@ -162,8 +178,8 @@ function startBridge() {
       res.end(r.ok ? '\n[sub-agent finished]\n' : '\n[sub-agent failed: ' + r.error + ']\n');
       let remembered = [];
       // Skip memory if the agent was removed from the canvas while it worked.
-      const still = (readJson(file('state.json'), {}).nodes || []).some((n) => (n.name || n.modelId) === name);
-      if (r.ok && still) { try { remembered = roles.remember(state.cwd, name, r.text); } catch (e) { /* folder not writable */ } }
+      const still = allAgentNames(readJson(file('state.json'), {})).includes(name);
+      if (r.ok && still) { try { remembered = roles.remember(cwd, name, r.text); } catch (e) { /* folder not writable */ } }
       send('sub:end', { callId, agent: name, ok: r.ok, text: r.text, error: r.error, remembered });
     });
   });

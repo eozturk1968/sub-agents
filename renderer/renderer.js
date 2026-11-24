@@ -57,7 +57,7 @@ const installed = {};      // harness -> bool
 const ui = {
   query: '', pending: null, authMode: 'key', keyInput: '', busyLogin: false, loginUrl: null,
   modalError: '', drag: null, runs: {},
-  open: [], bubbles: [], unread: new Set(), drafts: {}, roleEdit: null, editor: null, teamConfirm: null, renaming: null, settings: null,
+  open: [], bubbles: [], unread: new Set(), drafts: {}, roleEdit: null, editor: null, teamConfirm: null, renaming: null, settings: null, tabClose: null,
   attach: {} // agent name -> [{ name, dataUrl }] waiting to be sent
 };
 
@@ -88,7 +88,8 @@ function cleanAgentName(s) {
 }
 function uniqueAgentName(base, exceptKey) {
   base = cleanAgentName(base) || 'agent';
-  const taken = new Set(S.nodes.filter((n) => n.key !== exceptKey).map((n) => n.name));
+  // Names are unique across every open tab: chats, memory and sub-agent calls go by name.
+  const taken = new Set([...S.nodes.filter((n) => n.key !== exceptKey), ...allNodes().filter((n) => !S.nodes.includes(n))].map((n) => n.name));
   if (!taken.has(base)) return base;
   for (let i = 2; ; i++) if (!taken.has(base + '-' + i)) return base + '-' + i;
 }
@@ -109,7 +110,7 @@ function fixTree() {
   });
 }
 function cliFor(name) { return SCRIPT + ' ' + name; }
-function save() { api.saveState(S); }
+function save() { api.saveState(serializeState()); renderTabs(); }
 function avatar(h, size) {
   return '<span class="avatar" style="width:' + size + 'px;height:' + size + 'px;background:' + h.bg + ';color:' + h.fg + '" aria-hidden="true">' + h.letter + '</span>';
 }
@@ -145,7 +146,6 @@ function renderToolbar() {
   $('#status').innerHTML = S.nodes.length
     ? '<span class="dot" aria-hidden="true"></span>' + (lead ? 'Leader: <span class="mono">' + esc(lead.name) + '</span> · ' + others + ' other agent' + (others === 1 ? '' : 's') : '')
     : 'No agents yet';
-  $('#status').innerHTML += teamLabel();
   const f = S.cwd ? S.cwd.split(/[\\/]/).filter(Boolean).pop() : 'Home folder';
   $('#folder').textContent = 'Folder: ' + f;
   $('#folder').title = S.cwd || 'Agents work in your home folder. Click to choose a project folder.';
@@ -194,6 +194,7 @@ function renderNodes() {
       '</div></div>' + reports + shared + '</div>';
   }).join('');
   $('#empty').hidden = S.nodes.length > 0;
+  renderTabs();
   renderWires();
   renderToolbar();
 }
@@ -270,6 +271,7 @@ function renderModal() {
   if (ui.roleEdit) { renderRoleEditor(); return; }
   if (ui.editor) { renderEditor(); return; }
   if (ui.teamConfirm) { renderTeamConfirm(); return; }
+  if (ui.tabClose) { renderTabCloseConfirm(); return; }
   if (ui.settings) { renderSettings(); return; }
   const p = ui.pending;
   if (!p) { el.innerHTML = ''; return; }
@@ -387,6 +389,7 @@ function closeChat(id) {
 // A message arrived for a chat that isn't open: show it as a bubble with a dot.
 function notify(id) {
   if (isOpen(id)) return;
+  if (notifyOtherTab(id)) return;
   ui.unread.add(id);
   if (!ui.bubbles.includes(id)) ui.bubbles.unshift(id);
   renderBubbles();
@@ -585,8 +588,9 @@ async function send(id) {
   const list = chats[id];
   const history = list.filter((x) => x.role === 'user' || x.role === 'assistant' || x.role === 'task').slice(-10);
   const { subs, canRun } = leaderInfo(id);
+  const cwd = S.cwd; // the tab can change while this runs
 
-  let prompt = (await api.rolePrompt(S.cwd, id)) + '\n\n';
+  let prompt = (await api.rolePrompt(cwd, id)) + '\n\n';
   if (canRun) prompt += leaderBrief(subs) + '\n\n';
   if (history.length) {
     prompt += 'Conversation so far:\n' + history.map((x) => (x.role === 'user' ? 'User: ' : x.role === 'task' ? 'Agent you report to: ' : 'Assistant: ') + x.text).join('\n') + '\n\n';
@@ -594,7 +598,7 @@ async function send(id) {
   // Save attached images into the project so every tool can open them.
   let imagePaths = [];
   if (pending.length) {
-    const saved = await api.saveImages(S.cwd, pending.map((a) => ({ name: a.name, dataUrl: a.dataUrl })));
+    const saved = await api.saveImages(cwd, pending.map((a) => ({ name: a.name, dataUrl: a.dataUrl })));
     if (!saved.ok) { chats[id].push({ role: 'error', text: 'Could not save the images: ' + saved.error }); renderMessages(id); return; }
     imagePaths = saved.paths;
     prompt += 'The user attached ' + (imagePaths.length === 1 ? 'an image' : imagePaths.length + ' images') +
@@ -622,7 +626,7 @@ async function send(id) {
     harness: m.harness,
     model: m.model,
     prompt,
-    cwd: S.cwd,
+    cwd,
     providers,
     images: imagePaths,
     leaderTools: canRun && m.harness === 'claude' ? ['Bash(' + SCRIPT + ':*)', ...(S.claudeLeaderTools || [])] : null,
@@ -633,7 +637,7 @@ async function send(id) {
   if (chats[id] !== list) return; // removed from the canvas while it worked
   if (r.ok) {
     reply.text = r.text || reply.text || '(no output)';
-    addMemoryNote(id, await api.remember(S.cwd, id, reply.text));
+    addMemoryNote(id, await api.remember(cwd, id, reply.text));
   } else {
     if (!reply.text) list.pop();
     list.push({ role: 'error', text: r.error || 'Something went wrong.' });
@@ -641,6 +645,7 @@ async function send(id) {
   if (isOpen(id)) renderChat(id); else notify(id);
   renderNodes();
   renderBubbles();
+  renderTabs();
 }
 
 api.onChunk(({ runId, text }) => {
@@ -769,6 +774,7 @@ function bind() {
   bindSettings();
   bindFiles();
   bindTeams();
+  bindTabs();
   // A file dropped outside a drop area would replace the app with that file. Block it.
   document.addEventListener('dragover', (e) => { if (hasFiles(e)) e.preventDefault(); });
   document.addEventListener('drop', (e) => { if (hasFiles(e)) e.preventDefault(); });
@@ -1038,11 +1044,17 @@ function removedNotice(results) {
 async function init() {
   MODELS = (await api.listModels()).filter((m) => HARNESS[m.harness]);
   SCRIPT = await api.subagentScript();
-  const saved = await api.loadState();
-  if (saved) S = Object.assign(S, saved);
-  S.nodes = S.nodes.filter((n) => model(n.modelId));
-  fixTree();
-  await migrateAgents();
+  loadSavedState(await api.loadState());
+  // Check every tab: drop unknown models, fix the tree, give every agent a valid name unique across tabs.
+  const startTab = ACTIVE;
+  for (const t of TABS.slice()) {
+    if (t.id !== ACTIVE) { syncActiveTab(); ACTIVE = t.id; putTabInS(t); }
+    S.nodes = S.nodes.filter((n) => model(n.modelId));
+    fixTree();
+    await migrateAgents();
+    syncActiveTab();
+  }
+  if (ACTIVE !== startTab) { ACTIVE = startTab; putTabInS(currentTab()); }
   save();
   keyStatus = await api.keyStatus();
   bind();
