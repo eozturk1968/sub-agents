@@ -82,9 +82,16 @@ p { margin: 0; }
 .canvas {
   position: relative; flex: 1; margin: 0 20px 20px; overflow: auto; border-radius: 12px;
   border: 2px dashed transparent;
-  background-color: #F9FAFB;
-  background-image: radial-gradient(#D9DDE4 1px, transparent 1px);
-  background-size: 22px 22px;
+  /* Soft smoky teal / dark blue with a faint magenta glow in the middle, under the dot grid. */
+  background-color: #F4F7FA;
+  background-image:
+    radial-gradient(#CBD2DC 1px, transparent 1px),
+    radial-gradient(ellipse 38% 34% at 52% 48%, rgba(219,39,119,0.13), transparent 70%),
+    radial-gradient(ellipse 60% 55% at 18% 25%, rgba(13,148,136,0.20), transparent 70%),
+    radial-gradient(ellipse 55% 60% at 85% 80%, rgba(30,64,175,0.17), transparent 70%),
+    radial-gradient(ellipse 45% 40% at 75% 15%, rgba(15,118,110,0.12), transparent 70%);
+  background-size: 22px 22px, 100% 100%, 100% 100%, 100% 100%, 100% 100%;
+  background-attachment: local, local, local, local, local;
 }
 .canvas.over { border-color: #2563EB; background-color: rgba(37,99,235,0.04); }
 .wires { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
