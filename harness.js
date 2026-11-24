@@ -27,6 +27,8 @@ const HARNESSES = {
     args(model, prompt, opts) {
       const a = ['exec', '--skip-git-repo-check', '--output-last-message', opts.outFile, '-m', model];
       if (opts.fullAccess) a.push('--sandbox', 'danger-full-access');
+      for (const img of opts.images || []) a.push('--image', img);
+      if ((opts.images || []).length) a.push('--');
       a.push(prompt);
       return a;
     }
@@ -35,6 +37,9 @@ const HARNESSES = {
   antigravity: {
     name: 'Antigravity CLI',
     bin: 'agy',
+    // agy -p can hang or print nothing when it isn't attached to a terminal,
+    // so it runs inside a pseudo-terminal (see spawnTool).
+    needsTty: true,
     install: 'curl -fsSL https://antigravity.google/cli/install.sh | bash',
     keyEnv: [],
     clearEnv: ['GEMINI_API_KEY', 'GOOGLE_API_KEY'],
@@ -65,6 +70,31 @@ const HARNESSES = {
 };
 
 const running = new Map();
+
+const shQuote = (s) => "'" + String(s).replace(/'/g, "'\\''") + "'";
+
+// Start a tool. Tools marked needsTty run inside `script`, which gives them a
+// pseudo-terminal, on macOS and Linux.
+function spawnTool(h, args, options) {
+  if (h.needsTty && process.platform === 'darwin') {
+    return spawn('script', ['-q', '/dev/null', h.bin, ...args], options);
+  }
+  if (h.needsTty && process.platform === 'linux') {
+    return spawn('script', ['-q', '-e', '-c', [h.bin, ...args].map(shQuote).join(' '), '/dev/null'], options);
+  }
+  return spawn(h.bin, args, options);
+}
+
+// Remove terminal color codes and carriage returns from pseudo-terminal output.
+function cleanTty(text) {
+  return String(text)
+    .replace(/\x1b\[[0-9;?]*[ -\/]*[@-~]/g, '')
+    .replace(/\x1b\][^\x07]*(\x07|\x1b\\)/g, '')
+    .replace(/\x1b[@-_]/g, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '')
+    .replace(/^\^D\x08\x08/gm, '');
+}
 
 function check(harness) {
   const h = HARNESSES[harness];
@@ -106,7 +136,7 @@ function run(opts, keys, onChunk) {
 
     let child;
     try {
-      child = spawn(h.bin, args, { cwd: opts.cwd || os.homedir(), env: buildEnv(keys) });
+      child = spawnTool(h, args, { cwd: opts.cwd || os.homedir(), env: buildEnv(keys) });
     } catch (e) {
       return finish({ ok: false, error: e.message });
     }
@@ -114,7 +144,7 @@ function run(opts, keys, onChunk) {
     child.stdin.end();
 
     child.stdout.on('data', (d) => {
-      const t = d.toString();
+      const t = h.needsTty ? cleanTty(d.toString()) : d.toString();
       out += t;
       if (opts.harness !== 'codex') onChunk(t);
     });
@@ -153,7 +183,7 @@ function checkCliLogin(harness) {
   return new Promise((resolve) => {
     let out = '';
     let child;
-    try { child = spawn(h.bin, ['-p', 'Reply with just: OK'], { env: buildEnv({}) }); } catch (e) { return resolve({ ok: false, error: e.message }); }
+    try { child = spawnTool(h, ['-p', 'Reply with just: OK'], { env: buildEnv({}) }); } catch (e) { return resolve({ ok: false, error: e.message }); }
     child.stdin.end();
     const timer = setTimeout(() => child.kill(), 120000);
     child.stdout.on('data', (d) => { out += d; });

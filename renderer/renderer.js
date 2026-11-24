@@ -42,6 +42,7 @@ const ICON = {
   expand: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>',
   trash: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
   role: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>',
+  clip: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5l-8.6 8.6a5 5 0 0 1-7.1-7.1l8.6-8.6a3.3 3.3 0 0 1 4.7 4.7l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4l7.9-7.9"/></svg>',
   send: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>'
 };
 
@@ -56,7 +57,8 @@ const installed = {};      // harness -> bool
 const ui = {
   query: '', pending: null, authMode: 'key', keyInput: '', busyLogin: false, loginUrl: null,
   modalError: '', drag: null, runs: {},
-  open: [], bubbles: [], unread: new Set(), drafts: {}, roleEdit: null
+  open: [], bubbles: [], unread: new Set(), drafts: {}, roleEdit: null,
+  attach: {} // modelId -> [{ name, dataUrl }] waiting to be sent
 };
 
 const $ = (s) => document.querySelector(s);
@@ -445,7 +447,11 @@ function renderChat(id) {
       subs.map((s) => esc(s.modelId)).join(', ') + '</div>';
   }
   html += '<div class="messages"></div>' +
-    '<form class="composer"><label class="sr" for="draft-' + esc(id) + '">Message</label>' +
+    '<div class="attach-row"></div>' +
+    '<form class="composer">' +
+    '<input type="file" class="file-input" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>' +
+    '<button type="button" class="attach-btn" data-c="attach" aria-label="Attach images" title="Attach images">' + ICON.clip + '</button>' +
+    '<label class="sr" for="draft-' + esc(id) + '">Message</label>' +
     '<textarea id="draft-' + esc(id) + '" rows="1" placeholder="Message ' + esc(shortName(id)) + '"></textarea>' +
     (busy ? '<button type="button" class="btn" data-c="stop" style="height:44px">Stop</button>'
       : '<button type="submit" class="send" aria-label="Send">' + ICON.send + '</button>') +
@@ -458,6 +464,59 @@ function renderChat(id) {
   d.addEventListener('input', (e) => { ui.drafts[id] = e.target.value; });
   d.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(id); } });
   el.querySelector('form').addEventListener('submit', (e) => { e.preventDefault(); send(id); });
+
+  // Images: paperclip, paste, or drag and drop onto the window.
+  el.querySelector('.file-input').addEventListener('change', (e) => { addImages(id, e.target.files); e.target.value = ''; });
+  d.addEventListener('paste', (e) => {
+    const files = [...(e.clipboardData ? e.clipboardData.files : [])].filter((f) => IMAGE_TYPES.includes(f.type));
+    if (files.length) { e.preventDefault(); addImages(id, files); }
+  });
+  el.addEventListener('dragover', (e) => { if (hasFiles(e)) { e.preventDefault(); el.classList.add('drop'); } });
+  el.addEventListener('dragleave', (e) => { if (!el.contains(e.relatedTarget)) el.classList.remove('drop'); });
+  el.addEventListener('drop', (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    el.classList.remove('drop');
+    addImages(id, e.dataTransfer.files);
+  });
+  renderAttachRow(id);
+}
+
+// ---------- Image attachments ----------
+const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+const hasFiles = (e) => !!e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+
+function readAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(file);
+  });
+}
+
+async function addImages(id, fileList) {
+  const list = ui.attach[id] || (ui.attach[id] = []);
+  const skipped = [];
+  for (const f of [...fileList]) {
+    if (!IMAGE_TYPES.includes(f.type)) { skipped.push(f.name + ' (not PNG, JPG, GIF or WebP)'); continue; }
+    if (f.size > MAX_IMAGE_BYTES) { skipped.push(f.name + ' (over 20 MB)'); continue; }
+    const ext = f.type.split('/')[1].replace('jpeg', 'jpg');
+    list.push({ name: f.name && f.name !== 'image.png' ? f.name : 'pasted.' + ext, dataUrl: await readAsDataUrl(f) });
+  }
+  if (skipped.length) { chats[id].push({ role: 'error', text: 'Not attached: ' + skipped.join(', ') }); renderMessages(id); }
+  renderAttachRow(id);
+}
+
+function renderAttachRow(id) {
+  const el = winEl(id);
+  const row = el && el.querySelector('.attach-row');
+  if (!row) return;
+  const list = ui.attach[id] || [];
+  row.innerHTML = list.map((a, i) =>
+    '<div class="thumb"><img src="' + a.dataUrl + '" alt="' + esc(a.name) + '">' +
+    '<button type="button" class="thumb-x" data-unattach="' + i + '" aria-label="Remove ' + esc(a.name) + '">' + ICON.x + '</button></div>').join('');
 }
 
 function renderMessages(id) {
@@ -469,6 +528,7 @@ function renderMessages(id) {
     ? list.map((x) => '<div class="msg ' + x.role + '">' +
         (x.role === 'task' ? '<span class="msg-label">Task from ' + esc(x.from || 'the leader') + '</span>' : '') +
         (x.role === 'note' ? '<span class="msg-label">Saved to memory</span>' : '') +
+        (x.images && x.images.length ? '<div class="msg-images">' + x.images.map((im) => '<img src="' + im.dataUrl + '" alt="' + esc(im.name) + '">').join('') + '</div>' : '') +
         esc(x.text || (x.role === 'assistant' ? '…' : '')) + '</div>').join('')
     : '<p class="muted small center">Messages go to ' + esc(hOf(id).name) + ', working in ' + esc(S.cwd || 'your home folder') + '.</p>';
   box.scrollTop = box.scrollHeight;
@@ -494,7 +554,8 @@ function addMemoryNote(id, lines) {
 }
 
 async function send(id) {
-  const text = (ui.drafts[id] || '').trim();
+  const pending = ui.attach[id] || [];
+  const text = (ui.drafts[id] || '').trim() || (pending.length ? 'Please look at the attached image' + (pending.length > 1 ? 's.' : '.') : '');
   if (!id || !text || ui.runs[id]) return;
   const m = model(id);
   const list = chats[id];
@@ -506,12 +567,24 @@ async function send(id) {
   if (history.length) {
     prompt += 'Conversation so far:\n' + history.map((x) => (x.role === 'user' ? 'User: ' : x.role === 'task' ? 'Agent you report to: ' : 'Assistant: ') + x.text).join('\n') + '\n\n';
   }
+  // Save attached images into the project so every tool can open them.
+  let imagePaths = [];
+  if (pending.length) {
+    const saved = await api.saveImages(S.cwd, pending.map((a) => ({ name: a.name, dataUrl: a.dataUrl })));
+    if (!saved.ok) { chats[id].push({ role: 'error', text: 'Could not save the images: ' + saved.error }); renderMessages(id); return; }
+    imagePaths = saved.paths;
+    prompt += 'The user attached ' + (imagePaths.length === 1 ? 'an image' : imagePaths.length + ' images') +
+      '. Open and look at ' + (imagePaths.length === 1 ? 'it' : 'them') + ' before answering:\n' +
+      imagePaths.map((p) => '- ' + p).join('\n') +
+      '\nIf you hand a task about ' + (imagePaths.length === 1 ? 'this image' : 'these images') + ' to a sub-agent, include the file path' + (imagePaths.length === 1 ? '' : 's') + ' in the task.\n\n';
+  }
   prompt += 'User: ' + text;
 
   // Only pass the key for this model if it uses one. Sub-agent keys are handled by the app when the leader calls them.
   const providers = S.methods[id] === 'key' ? [hOf(id).provider] : [];
 
-  list.push({ role: 'user', text });
+  list.push({ role: 'user', text, images: pending.map((a, i) => ({ name: a.name, dataUrl: a.dataUrl, path: imagePaths[i] })) });
+  ui.attach[id] = [];
   const reply = { role: 'assistant', text: '' };
   list.push(reply);
   ui.drafts[id] = '';
@@ -527,6 +600,7 @@ async function send(id) {
     prompt,
     cwd: S.cwd,
     providers,
+    images: imagePaths,
     leaderTools: canRun && m.harness === 'claude' ? ['Bash(node ' + SCRIPT + ':*)'] : null,
     fullAccess: !!(canRun && m.harness !== 'claude')
   });
@@ -620,6 +694,10 @@ api.onLoginUrl((url) => {
 
 // ---------- Events ----------
 function bind() {
+  // A file dropped outside a drop area would replace the app with that file. Block it.
+  document.addEventListener('dragover', (e) => { if (hasFiles(e)) e.preventDefault(); });
+  document.addEventListener('drop', (e) => { if (hasFiles(e)) e.preventDefault(); });
+
   $('#search').addEventListener('input', (e) => { ui.query = e.target.value; renderList(); });
 
   const listEl = $('#model-list');
@@ -764,6 +842,13 @@ function bind() {
     if (ob) { openChat(ob.dataset.open); return; }
     const cb = e.target.closest('[data-close]');
     if (cb) { closeChat(cb.dataset.close); return; }
+    const ux = e.target.closest('[data-unattach]');
+    if (ux) {
+      const wid = ux.closest('.chat').dataset.id;
+      (ui.attach[wid] || []).splice(Number(ux.dataset.unattach), 1);
+      renderAttachRow(wid);
+      return;
+    }
     const b = e.target.closest('[data-c]');
     if (!b) return;
     const win = b.closest('.chat');
@@ -780,6 +865,7 @@ function bind() {
     else if (act === 'clear') { if (!ui.runs[id]) { chats[id] = []; renderChat(id); } }
     else if (act === 'stop') { const r = ui.runs[id]; if (r) api.stop(r); }
     else if (act === 'role') openRoleEditor(id);
+    else if (act === 'attach') win.querySelector('.file-input').click();
   });
 
   $('#folder').addEventListener('click', async () => {

@@ -40,6 +40,7 @@ npm start
 
 - **Add a model:** drag it from the list onto the canvas, or click it. The first time, it asks how to sign in.
 - **Chat:** the chat button on a box opens that model's chat window. Chats work like Messenger: each one gets its own window along the bottom, up to 3 at a time. Opening a 4th shrinks the oldest into a round bubble on the left; click a bubble to open it again. A blue dot means a new message, orange means it's working. Each window can be minimized, made bigger, resized from its corner, or cleared.
+- **Images:** attach PNG, JPG, GIF or WebP images with the paperclip, by pasting (Cmd+V), or by dropping them onto a chat window. They're saved in `your-project/.sub-agents/attachments/`. Codex gets them with `--image`; Claude Code and Antigravity get the file paths and open the images themselves.
 - **Role and memory:** the document button on a box (or in its chat window) opens that agent's role file. See below.
 - **Build a team:** each box has a **Reports to** menu. You can also drop a model from the list onto a box to make it that box's sub-agent. **Make leader** changes the top of the team.
 - **Folder:** sets the project folder the agents work in. The default is your home folder.
@@ -68,6 +69,8 @@ your-project/.sub-agents/roles/MODEL_ID.md
 ```
 
 It has `# Role`, `# Rules` and `# Memory` sections. The app puts the file at the top of every task the agent gets, whether from you or from the agent it reports to. When the agent ends a reply with lines like `REMEMBER: the user prefers TypeScript`, the app adds them under `# Memory`, so the agent sees them next time. You can edit or delete anything in the file, in the app or in any text editor.
+
+Antigravity CLI (`agy -p`) can hang when it isn't attached to a terminal, so the app runs it through the system's `script` command to give it one.
 
 ### Permissions
 

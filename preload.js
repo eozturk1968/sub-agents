@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('api', {
   rolePrompt: (cwd, id) => ipcRenderer.invoke('role:prompt', cwd, id),
   remember: (cwd, id, reply) => ipcRenderer.invoke('role:remember', cwd, id, reply),
   openRole: (cwd, id) => ipcRenderer.invoke('role:open', cwd, id),
+  saveImages: (cwd, files) => ipcRenderer.invoke('images:save', cwd, files),
   subagentScript: () => ipcRenderer.invoke('bridge:script'),
   onSubStart: (cb) => ipcRenderer.on('sub:start', (_e, d) => cb(d)),
   onSubChunk: (cb) => ipcRenderer.on('sub:chunk', (_e, d) => cb(d)),

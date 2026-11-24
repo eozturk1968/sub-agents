@@ -174,6 +174,26 @@ ipcMain.handle('chat:send', (_e, opts) => {
   return harness.run(opts, keys, (text) => win && win.webContents.send('chat:chunk', { runId: opts.runId, text }));
 });
 ipcMain.handle('bridge:script', () => SCRIPT);
+
+// Save chat images into PROJECT/.sub-agents/attachments so every CLI can read them.
+const IMAGE_EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
+ipcMain.handle('images:save', (_e, cwd, files) => {
+  try {
+    const dir = path.join(cwd || require('os').homedir(), '.sub-agents', 'attachments');
+    fs.mkdirSync(dir, { recursive: true });
+    const paths = (files || []).map((f, i) => {
+      const m = /^data:(image\/[a-z]+);base64,(.+)$/.exec(String(f.dataUrl || ''));
+      if (!m || !IMAGE_EXT[m[1]]) throw new Error('Not a supported image: ' + f.name);
+      const base = String(f.name || 'image').replace(/\.[^.]*$/, '').replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 60) || 'image';
+      const p = path.join(dir, Date.now() + '-' + i + '-' + base + '.' + IMAGE_EXT[m[1]]);
+      fs.writeFileSync(p, Buffer.from(m[2], 'base64'));
+      return p;
+    });
+    return { ok: true, paths };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
 ipcMain.handle('role:read', (_e, cwd, id) => roles.readRole(cwd, id));
 ipcMain.handle('role:write', (_e, cwd, id, text) => roles.writeRole(cwd, id, text));
 ipcMain.handle('role:prompt', (_e, cwd, id) => roles.rolePrompt(cwd, id));
