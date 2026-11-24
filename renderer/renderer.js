@@ -57,7 +57,7 @@ const installed = {};      // harness -> bool
 const ui = {
   query: '', pending: null, authMode: 'key', keyInput: '', busyLogin: false, loginUrl: null,
   modalError: '', drag: null, runs: {},
-  open: [], bubbles: [], unread: new Set(), drafts: {}, roleEdit: null, editor: null, teamConfirm: null, renaming: null,
+  open: [], bubbles: [], unread: new Set(), drafts: {}, roleEdit: null, editor: null, teamConfirm: null, renaming: null, settings: null,
   attach: {} // agent name -> [{ name, dataUrl }] waiting to be sent
 };
 
@@ -108,7 +108,7 @@ function fixTree() {
     if (!nodeByKey(n.parent) || descendants(n.key).has(n.parent)) n.parent = S.leader;
   });
 }
-function cliFor(name) { return 'node ' + SCRIPT + ' ' + name; }
+function cliFor(name) { return SCRIPT + ' ' + name; }
 function save() { api.saveState(S); }
 function avatar(h, size) {
   return '<span class="avatar" style="width:' + size + 'px;height:' + size + 'px;background:' + h.bg + ';color:' + h.fg + '" aria-hidden="true">' + h.letter + '</span>';
@@ -270,6 +270,7 @@ function renderModal() {
   if (ui.roleEdit) { renderRoleEditor(); return; }
   if (ui.editor) { renderEditor(); return; }
   if (ui.teamConfirm) { renderTeamConfirm(); return; }
+  if (ui.settings) { renderSettings(); return; }
   const p = ui.pending;
   if (!p) { el.innerHTML = ''; return; }
   const m = model(p.id);
@@ -624,7 +625,7 @@ async function send(id) {
     cwd: S.cwd,
     providers,
     images: imagePaths,
-    leaderTools: canRun && m.harness === 'claude' ? ['Bash(node ' + SCRIPT + ':*)'] : null,
+    leaderTools: canRun && m.harness === 'claude' ? ['Bash(' + SCRIPT + ':*)', ...(S.claudeLeaderTools || [])] : null,
     fullAccess: !!(canRun && m.harness !== 'claude')
   });
 
@@ -763,6 +764,7 @@ async function migrateAgents() {
 // ---------- Events ----------
 function bind() {
   bindView();
+  bindSettings();
   bindFiles();
   bindTeams();
   // A file dropped outside a drop area would replace the app with that file. Block it.

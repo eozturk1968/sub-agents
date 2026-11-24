@@ -320,3 +320,5 @@ p { margin: 0; }
 .name-btn:hover { text-decoration: underline dotted; }
 .rename input { width: 100%; height: 26px; padding: 0 6px; border-radius: 6px; border: 1px solid #2563EB; font-size: 13px; font-weight: 700; }
 .node .meta.mono { font-size: 11px; }
+
+.gear { width: 36px; height: 36px; }

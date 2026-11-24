@@ -38,6 +38,28 @@ npm install
 npm start
 ```
 
+## Make the Mac app
+
+This builds `Sub-Agents.dmg` so you can open the app from Applications with a double-click, with no terminal. In this folder:
+
+```
+npm install
+```
+```
+npm run dist
+```
+
+Then open the `dist` folder, double-click the `.dmg` file (`arm64` for Apple Silicon Macs, the other one for Intel Macs) and drag **Sub-Agents** into **Applications**.
+
+The app isn't signed by Apple, so the first time macOS will block it. To open it anyway, either:
+
+- right-click **Sub-Agents** in Applications, choose **Open**, then **Open** again, or
+- try to open it once, then go to **System Settings > Privacy & Security** and click **Open Anyway**.
+
+To give the app to other people without that warning, it has to be signed with an Apple Developer ID and notarized by Apple (needs a paid Apple Developer account).
+
+The app finds `claude`, `codex` and `agy` through your shell's `PATH`, so tools installed with Homebrew or npm work when it's opened from Finder too. The sub-agent command is written to `~/.sub-agents/bin/subagent` each time the app starts.
+
 ## Using it
 
 - **Add a model:** drag it from the list onto the canvas, or click it. The first time, it asks how to sign in. You can add the same model as many times as you want; each copy is its own agent.
@@ -79,12 +101,12 @@ It has `# Role`, `# Rules` and `# Memory` sections. The app puts the file at the
 
 ### Permissions
 
-- A **Claude** model that leads a team is only allowed to run the sub-agent script. Nothing else is auto-approved.
+- A **Claude** model that leads a team is only allowed to run the sub-agent script. Nothing else is auto-approved. To allow more (for example `Bash(python3:*)`, `Read`, `WebSearch`), click the gear button and add them under **Extra permissions for Claude leaders**, one per line.
 - A **Codex, Antigravity or Gemini** model that leads a team needs **Let leader run sub-agents** turned on. That runs Codex with `--sandbox danger-full-access`, Antigravity with `--dangerously-skip-permissions` and Gemini CLI with `--yolo`, so **they can run any command without asking**. Only turn it on with a project folder you're OK with them changing.
 
 ## Models
 
-Edit `models.json`. Each entry has:
+Click the gear button, then **Edit model list**. Save the file, then click **Reload**. (In the Mac app this edits a copy in the app's user data folder; when running with `npm start` it edits `models.json` in this folder.) Each entry has:
 
 - `id`: the name shown in the app
 - `harness`: `claude`, `codex`, `antigravity` or `gemini`

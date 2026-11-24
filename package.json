@@ -7,12 +7,58 @@
   "description": "Drag AI models onto a canvas and make them sub-agents of a group leader.",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "dist": "electron-builder --mac"
   },
   "dependencies": {
     "cross-spawn": "^7.0.6"
   },
   "devDependencies": {
-    "electron": "^45.4.1"
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "com.erdincozturk.subagents",
+    "productName": "Sub-Agents",
+    "copyright": "Copyright © 2026 Erdinc Ozturk. All rights reserved.",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "harness.js",
+      "roles.js",
+      "files.js",
+      "models.json",
+      "bin/**",
+      "renderer/**",
+      "build/icon.png",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "bin/**"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "icon": "build/icon.png",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ]
+    },
+    "dmg": {
+      "title": "Sub-Agents"
+    },
+    "linux": {
+      "target": "dir",
+      "icon": "build/icon.png"
+    }
   }
 }

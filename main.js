@@ -32,8 +32,52 @@ function saveKeys(keys) {
 }
 
 const send = (ch, data) => { if (win && !win.isDestroyed()) win.webContents.send(ch, data); };
-const SCRIPT = path.join(__dirname, 'bin', 'subagent.js');
-const BRIDGE_FILE = path.join(__dirname, 'bin', '.bridge.json');
+// ---------- Paths that must work when the app is launched from Finder ----------
+const os = require('os');
+const HOME_DIR = path.join(os.homedir(), '.sub-agents');
+// The script lives inside the app; packaged builds unpack it so plain node/Electron can run it.
+const SCRIPT_JS = path.join(__dirname, 'bin', 'subagent.js').replace('app.asar' + path.sep, 'app.asar.unpacked' + path.sep);
+// Leaders call sub-agents with this small launcher. It runs the script with the app's own
+// runtime (ELECTRON_RUN_AS_NODE), so Node doesn't need to be installed.
+const SCRIPT = path.join(HOME_DIR, 'bin', 'subagent');
+const BRIDGE_FILE = path.join(HOME_DIR, 'bridge.json');
+
+function writeLauncher() {
+  fs.mkdirSync(path.dirname(SCRIPT), { recursive: true });
+  const q = (s) => "'" + String(s).replace(/'/g, "'\\''") + "'";
+  fs.writeFileSync(SCRIPT, [
+    '#!/bin/sh',
+    '# Sub-Agents: hands a task to a sub-agent through the running app.',
+    '# Usage: subagent AGENT_NAME "TASK"   (rewritten each time the app starts)',
+    'ELECTRON_RUN_AS_NODE=1 exec ' + q(process.execPath) + ' ' + q(SCRIPT_JS) + ' "$@"',
+    ''
+  ].join('\n'), { mode: 0o755 });
+  fs.chmodSync(SCRIPT, 0o755);
+}
+
+// Apps opened from Finder don't get the PATH from your shell, so claude/codex/agy
+// wouldn't be found. Ask the login shell for its PATH once at startup.
+function loadShellPath() {
+  if (process.platform === 'win32') return;
+  const extra = ['/opt/homebrew/bin', '/usr/local/bin', path.join(os.homedir(), '.local', 'bin'), path.join(os.homedir(), '.npm-global', 'bin')];
+  let shellPath = '';
+  try {
+    const out = require('child_process').execFileSync(process.env.SHELL || '/bin/zsh', ['-ilc', 'printf "__SA_PATH__%s__SA_PATH__" "$PATH"'],
+      { encoding: 'utf8', timeout: 8000, stdio: ['ignore', 'pipe', 'ignore'] });
+    const m = /__SA_PATH__(.*)__SA_PATH__/.exec(out);
+    if (m) shellPath = m[1];
+  } catch (e) { /* fall back to the usual folders */ }
+  const parts = [...shellPath.split(':'), ...(process.env.PATH || '').split(':'), ...extra].filter(Boolean);
+  process.env.PATH = [...new Set(parts)].join(':');
+}
+
+// The model list. In the packaged app the built-in list can't be edited, so a copy
+// in the app's data folder is used once the user chooses to edit it.
+function userModelsFile() { return file('models.json'); }
+function modelsFile() {
+  if (app.isPackaged && fs.existsSync(userModelsFile())) return userModelsFile();
+  return path.join(__dirname, 'models.json');
+}
 
 // Team info for a model on the canvas: its boss and its signed-in sub-agents.
 function teamFor(state, list, agentName) {
@@ -54,7 +98,7 @@ function teamFor(state, list, agentName) {
 }
 
 function teamBrief(kids) {
-  const cmd = (id) => 'node ' + SCRIPT + ' ' + id;
+  const cmd = (id) => SCRIPT + ' ' + id;
   return [
     'You lead a team of AI agents in the Sub-Agents app.',
     'Your sub-agents are NOT part of this conversation or thread, and they will never show up in any built-in agent list or roster. ' +
@@ -78,7 +122,7 @@ function startBridge() {
       let p;
       try { p = JSON.parse(body); } catch (e) { res.writeHead(400); res.end('Bad request.'); return; }
       if (p.token !== token) { res.writeHead(403); res.end('Forbidden.'); return; }
-      const list = readJson(path.join(__dirname, 'models.json'), []);
+      const list = readJson(modelsFile(), []);
       const state = readJson(file('state.json'), {});
       // Sub-agents are called by agent name (older callers sent a model id).
       const agentName = String(p.agent || p.modelId || '');
@@ -108,7 +152,7 @@ function startBridge() {
       const r = await harness.run(
         {
           runId: callId, harness: m.harness, model: m.model, prompt, cwd: state.cwd,
-          leaderTools: canRun && m.harness === 'claude' ? ['Bash(node ' + SCRIPT + ':*)'] : null,
+          leaderTools: canRun && m.harness === 'claude' ? claudeLeaderTools(state) : null,
           fullAccess: canRun && m.harness !== 'claude'
         },
         keys,
@@ -145,7 +189,13 @@ function createWindow() {
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 }
 
-ipcMain.handle('models:list', () => readJson(path.join(__dirname, 'models.json'), []));
+ipcMain.handle('models:list', () => readJson(modelsFile(), []));
+ipcMain.handle('models:edit', async () => {
+  let p = modelsFile();
+  if (app.isPackaged && p !== userModelsFile()) { fs.copyFileSync(p, userModelsFile()); p = userModelsFile(); }
+  const err = await shell.openPath(p);
+  return err ? { ok: false, error: err, path: p } : { ok: true, path: p };
+});
 ipcMain.handle('state:load', () => readJson(file('state.json'), null));
 ipcMain.handle('state:save', (_e, s) => { fs.writeFileSync(file('state.json'), JSON.stringify(s, null, 2)); });
 
@@ -271,6 +321,20 @@ ipcMain.handle('role:open', (_e, cwd, id) => {
 });
 ipcMain.handle('chat:stop', (_e, runId) => harness.stop(runId));
 
-app.whenReady().then(() => { startBridge(); createWindow(); });
+// Tools a Claude leader may use without asking: the sub-agent launcher, plus any extra
+// permissions added in Settings (for example Bash(python3:*) or Read).
+function claudeLeaderTools(state) {
+  const extra = Array.isArray(state.claudeLeaderTools) ? state.claudeLeaderTools : [];
+  return ['Bash(' + SCRIPT + ':*)', ...extra.map((t) => String(t).trim()).filter(Boolean)];
+}
+ipcMain.handle('leader:tools', () => claudeLeaderTools(readJson(file('state.json'), {})));
+
+// Only one copy of the app at a time (two would fight over the sub-agent bridge).
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
+  app.whenReady().then(() => { loadShellPath(); writeLauncher(); startBridge(); createWindow(); });
+}
 app.on('quit', () => { try { fs.unlinkSync(BRIDGE_FILE); } catch (e) { /* already gone */ } });
 app.on('window-all-closed', () => app.quit());

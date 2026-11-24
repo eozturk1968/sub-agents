@@ -16,7 +16,7 @@ if (!agent || !task) {
 
 let bridge;
 try {
-  bridge = JSON.parse(fs.readFileSync(path.join(__dirname, '.bridge.json'), 'utf8'));
+  bridge = JSON.parse(fs.readFileSync(path.join(require('os').homedir(), '.sub-agents', 'bridge.json'), 'utf8'));
 } catch (e) {
   console.error('The Sub-Agents app is not running, so the sub-agent cannot be called.');
   process.exit(1);
