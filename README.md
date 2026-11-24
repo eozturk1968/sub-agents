@@ -97,3 +97,7 @@ Chat history isn't saved yet. Role files and memory are saved in the project fol
 
 - Using your own Claude Code or Antigravity login is meant for your own use on your own computer. To use it, run `claude` or `agy` once in a terminal and sign in.
 - Using your own Claude Code login is meant for your own use on your own computer. Anthropic doesn't allow apps to offer Claude sign-in to other people, so if you share this app, Claude models should use API keys.
+
+## License
+
+Copyright (c) 2026 Erdinc Ozturk. All rights reserved. See [LICENSE](LICENSE).
