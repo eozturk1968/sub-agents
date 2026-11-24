@@ -2,12 +2,22 @@ name: Release
 
 # Push a tag like v0.1.0 and GitHub builds the Mac .dmg and the Windows .exe,
 # then publishes them on the Releases page.
+# Or: Actions tab > Release > Run workflow, and type the version.
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag to publish (e.g. v0.2.0)'
+        required: true
+        default: 'v0.2.0'
 
 permissions:
   contents: write
+
+env:
+  TAG: ${{ inputs.version || github.ref_name }}
 
 jobs:
   build:
@@ -37,7 +47,9 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - uses: softprops/action-gh-release@v2
         with:
-          name: Sub-Agents ${{ github.ref_name }}
+          tag_name: ${{ env.TAG }}
+          target_commitish: ${{ github.sha }}
+          name: Sub-Agents ${{ env.TAG }}
           files: ${{ matrix.files }}
           body: |
             **Mac (Apple Silicon M1–M4):** download `the `.dmg` ending in `arm64``
