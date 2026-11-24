@@ -11,5 +11,7 @@
   { "id": "openai/gpt-6-sol", "harness": "codex", "model": "gpt-6-sol" },
   { "id": "openai/gpt-6-luna", "harness": "codex", "model": "gpt-6-luna" },
   { "id": "openai/gpt-5.6-sol", "harness": "codex", "model": "gpt-5.6-sol" },
-  { "id": "google/gemini", "harness": "antigravity", "model": "" }
+  { "id": "google/gemini-3.8-flash-high", "harness": "antigravity", "model": "gemini-3.8-flash-high" },
+  { "id": "google/gemini-3.8-flash-medium", "harness": "antigravity", "model": "gemini-3.8-flash-medium" },
+  { "id": "google/gemini-3.8-flash-low", "harness": "antigravity", "model": "gemini-3.8-flash-low" }
 ]
