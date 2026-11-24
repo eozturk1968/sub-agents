@@ -1,6 +1,6 @@
 {
   "name": "sub-agents",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "license": "UNLICENSED",
   "author": "Erdinc Ozturk",
@@ -22,7 +22,7 @@
   "build": {
     "appId": "com.erdincozturk.subagents",
     "productName": "Sub-Agents",
-    "copyright": "Copyright \u00a9 2026 Erdinc Ozturk. All rights reserved.",
+    "copyright": "Copyright © 2026 Erdinc Ozturk. All rights reserved.",
     "directories": {
       "buildResources": "build",
       "output": "dist"
