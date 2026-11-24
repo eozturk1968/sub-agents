@@ -244,7 +244,12 @@ ipcMain.handle('keys:set', (_e, provider, key) => {
 });
 ipcMain.handle('keys:encrypted', () => safeStorage.isEncryptionAvailable());
 
-ipcMain.handle('harness:check', (_e, h) => harness.check(h));
+// Re-read PATH first, so a tool installed while the app is open is found by "Check again".
+let pathReadAt = Date.now();
+ipcMain.handle('harness:check', (_e, h) => {
+  if (Date.now() - pathReadAt > 3000) { try { loadShellPath(); } catch {} pathReadAt = Date.now(); }
+  return harness.check(h);
+});
 ipcMain.handle('harness:login', (_e, h) => harness.login(h, (url) => win && win.webContents.send('login:url', url)));
 
 ipcMain.handle('folder:pick', async () => {

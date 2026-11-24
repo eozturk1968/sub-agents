@@ -73,7 +73,7 @@ Sub-Agents also runs on Windows 10 (1809 or newer) and Windows 11. Build the ins
 
 - Claude Code: `irm https://claude.ai/install.ps1 | iex` (or `winget install Anthropic.ClaudeCode`), then run `claude` once to log in.
 - Codex: `npm install -g @openai/codex`, then run `codex` once and choose **Sign in with ChatGPT**.
-- Antigravity CLI (`agy`): use the **Windows** command on antigravity.google/docs/getting-started, then run `agy` once to sign in.
+- Antigravity CLI (`agy`): in PowerShell run `irm https://antigravity.google/cli/install.ps1 | iex`, open a new PowerShell, then run `agy` once to sign in.
 
 Open a new PowerShell window after installing, so the new commands are found.
 

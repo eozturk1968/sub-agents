@@ -54,7 +54,7 @@ const FILE_MANAGER = IS_MAC ? 'Finder' : IS_WIN ? 'File Explorer' : 'file manage
 if (IS_WIN) {
   // Windows install commands (run in PowerShell).
   HARNESS.claude.install = 'irm https://claude.ai/install.ps1 | iex';
-  HARNESS.antigravity.install = 'See antigravity.google/docs/getting-started (Windows tab)';
+  HARNESS.antigravity.install = 'irm https://antigravity.google/cli/install.ps1 | iex';
 }
 HARNESS.claude.subDesc = HARNESS.claude.subDesc.replace('this Mac', 'this computer');
 

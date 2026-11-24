@@ -40,7 +40,7 @@ const HARNESSES = {
     // Some reports say agy -p hangs without a terminal. On macOS it works fine piped,
     // and `script` can't start from a GUI app, so this stays off. See spawnTool.
     needsTty: false,
-    install: process.platform === 'win32' ? 'the Windows command at antigravity.google/docs/getting-started' : 'curl -fsSL https://antigravity.google/cli/install.sh | bash',
+    install: process.platform === 'win32' ? 'irm https://antigravity.google/cli/install.ps1 | iex   (in PowerShell)' : 'curl -fsSL https://antigravity.google/cli/install.sh | bash',
     keyEnv: [],
     clearEnv: ['GEMINI_API_KEY', 'GOOGLE_API_KEY'],
     provider: 'google',

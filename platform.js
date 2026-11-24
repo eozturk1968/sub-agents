@@ -62,6 +62,7 @@ function windowsToolDirs(env, home) {
     path.win32.join(home, '.local', 'bin'), // Claude Code native installer
     e('APPDATA') && path.win32.join(e('APPDATA'), 'npm'), // npm install -g (Codex)
     e('LOCALAPPDATA') && path.win32.join(e('LOCALAPPDATA'), 'Microsoft', 'WinGet', 'Links'),
+    e('LOCALAPPDATA') && path.win32.join(e('LOCALAPPDATA'), 'agy', 'bin'),
     e('LOCALAPPDATA') && path.win32.join(e('LOCALAPPDATA'), 'Programs', 'agy'),
     e('LOCALAPPDATA') && path.win32.join(e('LOCALAPPDATA'), 'Programs', 'antigravity-cli'),
     e('ProgramData') && path.win32.join(e('ProgramData'), 'chocolatey', 'bin'),
