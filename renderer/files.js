@@ -130,7 +130,7 @@ async function createItem(name) {
 
 // ---------- Editor ----------
 function sendTargets() {
-  return S.nodes.map((n) => n.modelId).filter((id) => model(id) && isReady(id));
+  return S.nodes.filter((n) => model(n.modelId) && isReady(n.modelId)).map((n) => n.name);
 }
 
 async function openEditor(rel) {
@@ -171,7 +171,7 @@ function renderEditor() {
     '<button type="button" class="btn" data-e="reveal">Show in Finder</button>' +
     '<span class="send-to"><label class="sr" for="editor-send">Agent</label>' +
     (targets.length
-      ? '<select id="editor-send">' + targets.map((id) => '<option value="' + esc(id) + '"' + (id === e.sendTo ? ' selected' : '') + '>' + esc(shortName(id)) + '</option>').join('') + '</select>' +
+      ? '<select id="editor-send">' + targets.map((id) => '<option value="' + esc(id) + '"' + (id === e.sendTo ? ' selected' : '') + '>' + esc(id) + '</option>').join('') + '</select>' +
         '<button type="button" class="btn" data-e="send">Send to chat</button>'
       : '<span class="muted small">Connect an agent to send this to a chat.</span>') +
     '</span><span class="grow"></span>' +
@@ -268,7 +268,7 @@ async function saveReplyAsDraft(id, index) {
   const d = new Date();
   const pad = (n) => String(n).padStart(2, '0');
   const stamp = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + '-' + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds());
-  const rel = DRAFTS + '/' + shortName(id).replace(/[^A-Za-z0-9._-]/g, '_') + '-' + stamp + '.md';
+  const rel = DRAFTS + '/' + id.replace(/[^A-Za-z0-9._-]/g, '_') + '-' + stamp + '.md';
   const r = await api.fsWrite(S.cwd, rel, msg.text);
   if (!r.ok) { chats[id].push({ role: 'error', text: 'Could not save the draft: ' + r.error }); renderChat(id); return; }
   await refreshFiles();

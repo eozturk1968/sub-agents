@@ -38,7 +38,8 @@ npm start
 
 ## Using it
 
-- **Add a model:** drag it from the list onto the canvas, or click it. The first time, it asks how to sign in.
+- **Add a model:** drag it from the list onto the canvas, or click it. The first time, it asks how to sign in. You can add the same model as many times as you want; each copy is its own agent.
+- **Agent names:** every box has its own name (shown in bold). Double-click it to rename it, for example `opus-reviewer` and `opus-writer`. Names use letters, numbers, `-`, `_` and `.`; a name that's already taken gets `-2` added. Each agent has its own chat, role file, memory and status; sign-in is shared by all agents of the same model.
 - **Chat:** the chat button on a box opens that model's chat window. Chats work like Messenger: each one gets its own window along the bottom, up to 3 at a time. Opening a 4th shrinks the oldest into a round bubble on the left; click a bubble to open it again. A blue dot means a new message, orange means it's working. Each window can be minimized, made bigger, resized from its corner, or cleared.
 - **Teams:** **Save team** saves the canvas as a file you name (it suggests `your-project/.sub-agents/teams/`). It keeps which models are on the canvas, who reports to whom, where the boxes are, the "Let leader run sub-agents" setting, and each agent's role file. It never stores API keys or sign-ins. **Open team** loads one again; teams in the project folder are also listed in the Files tab. Opening a team never overwrites role files the project already has.
 - **Files:** the **Files** tab in the sidebar shows your project folder. Click a file to open it: text and code open in an editor (**Save** or Cmd+S; change the path to save a copy under a new name), images show as pictures, and anything else can be opened in its Mac app. **+** makes a new file or folder. Everything stays inside the project folder.
@@ -53,7 +54,7 @@ npm start
 When you message a model that has sub-agents, it's told it can run:
 
 ```
-node bin/subagent.js MODEL_ID "TASK"
+node bin/subagent.js AGENT_NAME "TASK"
 ```
 
 That script asks the running app to run the sub-agent's own CLI. Because the app does the run, every call is visible:
@@ -68,7 +69,7 @@ If a model claims a sub-agent answered but nothing shows up on that sub-agent's 
 Each agent has a Markdown role file in the project folder you pick with **Folder**:
 
 ```
-your-project/.sub-agents/roles/MODEL_ID.md
+your-project/.sub-agents/roles/AGENT_NAME.md
 ```
 
 It has `# Role`, `# Rules` and `# Memory` sections. The app puts the file at the top of every task the agent gets, whether from you or from the agent it reports to. When the agent ends a reply with lines like `REMEMBER: the user prefers TypeScript`, the app adds them under `# Memory`, so the agent sees them next time. You can edit or delete anything in the file, in the app or in any text editor.

@@ -49,16 +49,16 @@ const ICON = {
 // ---------- State ----------
 let MODELS = [];
 let SCRIPT = '';
-const lastCall = {}; // modelId -> { time, ok }
+const lastCall = {}; // agent name -> { time, ok, from }
 let S = { nodes: [], leader: null, nextKey: 1, methods: {}, cwd: null, allowLeaderRun: false };
-const chats = {};          // modelId -> [{ role, text }]
+const chats = {};          // agent name -> [{ role, text }]
 let keyStatus = {};        // provider -> true
 const installed = {};      // harness -> bool
 const ui = {
   query: '', pending: null, authMode: 'key', keyInput: '', busyLogin: false, loginUrl: null,
   modalError: '', drag: null, runs: {},
-  open: [], bubbles: [], unread: new Set(), drafts: {}, roleEdit: null, editor: null, teamConfirm: null,
-  attach: {} // modelId -> [{ name, dataUrl }] waiting to be sent
+  open: [], bubbles: [], unread: new Set(), drafts: {}, roleEdit: null, editor: null, teamConfirm: null, renaming: null,
+  attach: {} // agent name -> [{ name, dataUrl }] waiting to be sent
 };
 
 const $ = (s) => document.querySelector(s);
@@ -76,7 +76,22 @@ function isReady(id) {
 }
 function leaderNode() { return S.nodes.find((n) => n.key === S.leader) || null; }
 const nodeByKey = (k) => S.nodes.find((n) => n.key === k) || null;
-const nodeOf = (id) => S.nodes.find((n) => n.modelId === id) || null;
+// Each box on the canvas is an agent with its own unique name. Chats, roles, memory and
+// leader calls use the agent name; sign-in stays per model.
+const agentNode = (name) => S.nodes.find((n) => n.name === name) || null;
+const agentModel = (name) => { const n = agentNode(name); return n ? model(n.modelId) : null; };
+const aH = (name) => HARNESS[agentModel(name).harness];
+const agentMethod = (name) => { const n = agentNode(name); return n ? methodLabel(n.modelId) : ''; };
+const AGENT_NAME_OK = /^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$/;
+function cleanAgentName(s) {
+  return String(s || '').trim().replace(/\s+/g, '-').replace(/[^A-Za-z0-9._-]/g, '').replace(/^[._-]+/, '').slice(0, 48);
+}
+function uniqueAgentName(base, exceptKey) {
+  base = cleanAgentName(base) || 'agent';
+  const taken = new Set(S.nodes.filter((n) => n.key !== exceptKey).map((n) => n.name));
+  if (!taken.has(base)) return base;
+  for (let i = 2; ; i++) if (!taken.has(base + '-' + i)) return base + '-' + i;
+}
 function childrenOf(key) { return S.nodes.filter((n) => n.parent === key); }
 function readyChildren(key) { return childrenOf(key).filter((n) => isReady(n.modelId)); }
 function descendants(key) {
@@ -93,7 +108,7 @@ function fixTree() {
     if (!nodeByKey(n.parent) || descendants(n.key).has(n.parent)) n.parent = S.leader;
   });
 }
-function cliFor(id) { return 'node ' + SCRIPT + ' ' + id; }
+function cliFor(name) { return 'node ' + SCRIPT + ' ' + name; }
 function save() { api.saveState(S); }
 function avatar(h, size) {
   return '<span class="avatar" style="width:' + size + 'px;height:' + size + 'px;background:' + h.bg + ';color:' + h.fg + '" aria-hidden="true">' + h.letter + '</span>';
@@ -128,7 +143,7 @@ function renderToolbar() {
   const lead = leaderNode();
   const others = Math.max(0, S.nodes.length - 1);
   $('#status').innerHTML = S.nodes.length
-    ? '<span class="dot" aria-hidden="true"></span>' + (lead ? 'Leader: <span class="mono">' + esc(lead.modelId) + '</span> · ' + others + ' other agent' + (others === 1 ? '' : 's') : '')
+    ? '<span class="dot" aria-hidden="true"></span>' + (lead ? 'Leader: <span class="mono">' + esc(lead.name) + '</span> · ' + others + ' other agent' + (others === 1 ? '' : 's') : '')
     : 'No agents yet';
   $('#status').innerHTML += teamLabel();
   const f = S.cwd ? S.cwd.split(/[\\/]/).filter(Boolean).pop() : 'Home folder';
@@ -150,7 +165,7 @@ function renderNodes() {
     else role = (ready ? 'Sub-agent' : 'Sub-agent · sign in to share') + (kids.length ? ' · leads ' + kids.length : '');
     const shared = kids.length
       ? '<div class="shared"><span class="shared-label">Can call these sub-agents</span><div class="chips">' +
-        kids.map((c) => '<span class="chip mono">' + esc(hOf(c.modelId).short) + ' · ' + esc(shortName(c.modelId)) + '</span>').join('') +
+        kids.map((c) => '<span class="chip mono">' + esc(hOf(c.modelId).short) + ' · ' + esc(c.name) + '</span>').join('') +
         '</div></div>'
       : '';
     let reports = '';
@@ -158,18 +173,22 @@ function renderNodes() {
       const banned = descendants(n.key);
       const options = S.nodes.filter((o) => o.key !== n.key && !banned.has(o.key));
       reports = '<label class="reports"><span>Reports to</span><select data-parent="' + n.key + '">' +
-        options.map((o) => '<option value="' + o.key + '"' + (o.key === n.parent ? ' selected' : '') + '>' + esc(shortName(o.modelId)) + (o.key === S.leader ? ' (leader)' : '') + '</option>').join('') +
+        options.map((o) => '<option value="' + o.key + '"' + (o.key === n.parent ? ' selected' : '') + '>' + esc(o.name) + (o.key === S.leader ? ' (leader)' : '') + '</option>').join('') +
         '</select></label>';
     }
-    const lc = lastCall[n.modelId];
+    const lc = lastCall[n.name];
     return '<div class="node' + (lead ? ' leader' : '') + '" data-key="' + n.key + '" style="left:' + n.x + 'px;top:' + n.y + 'px">' +
       '<div class="node-top"><span class="badge' + (lead ? ' lead' : '') + '">' + role + '</span>' +
-      (ui.runs[n.modelId] ? '<span class="busy">working…</span>' : '') + '<span class="grow"></span>' +
-      '<button type="button" class="icon-btn boxed" data-act="chat" aria-label="Open chat with ' + esc(m.id) + '">' + ICON.chat + '</button>' +
-      '<button type="button" class="icon-btn boxed" data-act="role" aria-label="Role and memory for ' + esc(m.id) + '" title="Role and memory">' + ICON.role + '</button>' +
+      (ui.runs[n.name] ? '<span class="busy">working…</span>' : '') + '<span class="grow"></span>' +
+      '<button type="button" class="icon-btn boxed" data-act="chat" aria-label="Open chat with ' + esc(n.name) + '">' + ICON.chat + '</button>' +
+      '<button type="button" class="icon-btn boxed" data-act="role" aria-label="Role and memory for ' + esc(n.name) + '" title="Role and memory">' + ICON.role + '</button>' +
       (lead ? '' : '<button type="button" class="btn xs" data-act="leader">Make leader</button>') +
-      '<button type="button" class="icon-btn" data-act="remove" aria-label="Remove ' + esc(m.id) + '">' + ICON.x + '</button></div>' +
-      '<div class="row">' + avatar(h, 32) + '<div class="col grow"><span class="mono name">' + esc(m.id) + '</span>' +
+      '<button type="button" class="icon-btn" data-act="remove" aria-label="Remove ' + esc(n.name) + '">' + ICON.x + '</button></div>' +
+      '<div class="row">' + avatar(h, 32) + '<div class="col grow">' +
+      (ui.renaming === n.key
+        ? '<form class="rename" data-rename-form="' + n.key + '"><label class="sr" for="rename-' + n.key + '">Agent name</label><input id="rename-' + n.key + '" class="mono" maxlength="48" autocomplete="off"></form>'
+        : '<button type="button" class="name-btn mono name" data-act="rename" title="Double-click to rename">' + esc(n.name) + '</button>') +
+      '<span class="meta mono">' + esc(m.id) + '</span>' +
       '<span class="meta">' + h.name + ' · ' + (ready ? methodLabel(n.modelId) : 'Not connected') + '</span>' +
       (lc ? '<span class="meta ' + (lc.ok ? 'ok' : 'bad') + '">Last task from ' + esc(lc.from) + ': ' + lc.time + (lc.ok ? ', finished' : ', failed') + '</span>' : '') +
       '</div></div>' + reports + shared + '</div>';
@@ -220,23 +239,18 @@ function addNode(id, x, y, parent) {
   }
   const key = S.nextKey++;
   const hasLeader = !!leaderNode();
-  S.nodes.push({ key, modelId: id, x: Math.max(0, x), y: Math.max(0, y), parent: hasLeader ? (nodeByKey(parent) ? parent : S.leader) : null });
+  const name = uniqueAgentName(shortName(id));
+  S.nodes.push({ key, modelId: id, name, x: Math.max(0, x), y: Math.max(0, y), parent: hasLeader ? (nodeByKey(parent) ? parent : S.leader) : null });
   if (!hasLeader) S.leader = key;
   fixTree();
   save();
   renderNodes();
   renderList();
+  return name;
 }
 
 function request(id, x, y, parent) {
-  const existing = nodeOf(id);
-  if (existing) {
-    // A model can only be on the canvas once; dropping it on a box moves it under that box.
-    if (parent != null && parent !== existing.key && !descendants(existing.key).has(parent) && existing.key !== S.leader) {
-      existing.parent = parent; fixTree(); placeUnder(existing); save(); renderNodes();
-    }
-    return;
-  }
+  // The same model can be added many times; each copy is its own agent.
   if (isReady(id)) addNode(id, x, y, parent);
   else openModal(id, { x, y, parent });
 }
@@ -332,9 +346,11 @@ async function confirmModal() {
   }
   ui.pending = null;
   renderModal();
-  if (p.noAdd) { save(); renderNodes(); renderList(); } else addNode(p.id, p.x, p.y, p.parent);
+  let name = p.agent;
+  if (p.noAdd) { save(); renderNodes(); renderList(); } else name = addNode(p.id, p.x, p.y, p.parent);
   renderConnected();
-  openChat(p.id);
+  renderAllChats();
+  if (name) openChat(name);
 }
 
 // ---------- Chat windows (Messenger style) ----------
@@ -345,7 +361,7 @@ const isOpen = (id) => ui.open.some((w) => w.id === id);
 const winEl = (id) => [...document.querySelectorAll('#dock .chat')].find((el) => el.dataset.id === id) || null;
 
 function openChat(id) {
-  if (!model(id)) return;
+  if (!agentNode(id)) return;
   if (!chats[id]) chats[id] = [];
   ui.bubbles = ui.bubbles.filter((b) => b !== id);
   ui.unread.delete(id);
@@ -379,7 +395,7 @@ function notify(id) {
 
 function syncDock() {
   const dock = $('#dock');
-  ui.open = ui.open.filter((w) => model(w.id));
+  ui.open = ui.open.filter((w) => agentNode(w.id));
   const want = ui.open.map((w) => w.id);
   [...dock.querySelectorAll('.chat')].forEach((el) => { if (!want.includes(el.dataset.id)) el.remove(); });
   const current = [...dock.querySelectorAll('.chat')].map((el) => el.dataset.id);
@@ -400,44 +416,46 @@ function syncDock() {
 }
 
 function renderBubbles() {
-  ui.bubbles = ui.bubbles.filter((id) => model(id));
+  ui.bubbles = ui.bubbles.filter((id) => agentNode(id));
   $('#bubbles').innerHTML = ui.bubbles.map((id) => {
-    const h = hOf(id);
+    const h = aH(id);
     const dot = ui.runs[id] ? '<span class="bubble-dot busy" aria-hidden="true"></span>'
       : ui.unread.has(id) ? '<span class="bubble-dot" aria-hidden="true"></span>' : '';
     return '<div class="bubble-wrap">' +
       '<button type="button" class="bubble" data-open="' + esc(id) + '" title="' + esc(id) + '" aria-label="Open chat with ' + esc(id) + (ui.unread.has(id) ? ' (new message)' : '') + '" style="background:' + h.bg + ';color:' + h.fg + '">' + h.letter + dot + '</button>' +
-      '<span class="bubble-name">' + esc(shortName(id)) + '</span>' +
+      '<span class="bubble-name">' + esc(id) + '</span>' +
       '<button type="button" class="bubble-close" data-close="' + esc(id) + '" aria-label="Close chat with ' + esc(id) + '">' + ICON.x + '</button>' +
       '</div>';
   }).join('');
 }
 
 function renderAllChats() {
+  // Close windows and bubbles for agents that are no longer on the canvas.
+  if (ui.open.some((w) => !agentNode(w.id)) || ui.bubbles.some((b) => !agentNode(b))) syncDock();
   ui.open.forEach((w) => renderChat(w.id));
   renderBubbles();
 }
 
 function leaderInfo(id) {
-  const node = nodeOf(id);
+  const node = agentNode(id);
   const subs = node ? readyChildren(node.key) : [];
   const isLead = subs.length > 0;
-  const canRun = isLead && (model(id).harness === 'claude' || S.allowLeaderRun);
+  const canRun = isLead && (agentModel(id).harness === 'claude' || S.allowLeaderRun);
   return { isLead, subs, canRun, isRoot: !!node && node.key === S.leader };
 }
 
 function renderChat(id) {
   const el = winEl(id);
-  if (!el) return;
+  if (!el || !agentNode(id)) return;
   const w = ui.open.find((x) => x.id === id);
-  const m = model(id);
+  const m = agentModel(id);
   const h = HARNESS[m.harness];
   const { isLead, subs, canRun } = leaderInfo(id);
   const busy = !!ui.runs[id];
   el.className = 'chat ' + (w ? w.size : 'small');
 
   let html = '<header class="chat-head">' + avatar(h, 26) +
-    '<div class="col grow"><strong style="font-size:13px">' + esc(shortName(id)) + '</strong><span class="tiny">' + h.name + ' · ' + methodLabel(id) + '</span></div>' +
+    '<div class="col grow"><strong style="font-size:13px">' + esc(id) + '</strong><span class="tiny">' + esc(shortName(m.id)) + ' · ' + h.name + ' · ' + agentMethod(id) + '</span></div>' +
     '<button type="button" class="icon-btn light" data-c="role" aria-label="Edit role" title="Role and memory">' + ICON.role + '</button>' +
     '<button type="button" class="icon-btn light" data-c="clear" aria-label="Clear chat" title="Clear chat">' + ICON.trash + '</button>' +
     '<button type="button" class="icon-btn light" data-c="min" aria-label="Minimize" title="Minimize">' + ICON.min + '</button>' +
@@ -447,7 +465,7 @@ function renderChat(id) {
     html += '<div class="leader-bar">' + (canRun
       ? 'Leads a team. It can hand tasks to: '
       : 'Leads a team. Turn on "Let leader run sub-agents" so ' + h.name + ' can call: ') +
-      subs.map((s) => esc(s.modelId)).join(', ') + '</div>';
+      subs.map((s) => esc(s.name)).join(', ') + '</div>';
   }
   html += '<div class="messages"></div>' +
     '<div class="attach-row"></div>' +
@@ -455,7 +473,7 @@ function renderChat(id) {
     '<input type="file" class="file-input" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>' +
     '<button type="button" class="attach-btn" data-c="attach" aria-label="Attach images" title="Attach images">' + ICON.clip + '</button>' +
     '<label class="sr" for="draft-' + esc(id) + '">Message</label>' +
-    '<textarea id="draft-' + esc(id) + '" rows="1" placeholder="Message ' + esc(shortName(id)) + '"></textarea>' +
+    '<textarea id="draft-' + esc(id) + '" rows="1" placeholder="Message ' + esc(id) + '"></textarea>' +
     (busy ? '<button type="button" class="btn" data-c="stop" style="height:44px">Stop</button>'
       : '<button type="submit" class="send" aria-label="Send">' + ICON.send + '</button>') +
     '</form>';
@@ -535,7 +553,7 @@ function renderMessages(id) {
         esc(x.text || (x.role === 'assistant' ? '…' : '')) +
         (x.role === 'assistant' && x.text && !ui.runs[id] ? '<button type="button" class="msg-save" data-savereply="' + i + '">Save as draft</button>' : '') +
         '</div>').join('')
-    : '<p class="muted small center">Messages go to ' + esc(hOf(id).name) + ', working in ' + esc(S.cwd || 'your home folder') + '.</p>';
+    : '<p class="muted small center">Messages go to ' + esc(aH(id).name) + ', working in ' + esc(S.cwd || 'your home folder') + '.</p>';
   box.scrollTop = box.scrollHeight;
 }
 
@@ -547,8 +565,8 @@ function leaderBrief(subs) {
       'Each one is a separate command-line program that you call yourself by running a shell command.',
     'To give a sub-agent a task, run its command with the task as the last argument in double quotes. The Sub-Agents app then runs that model and the command prints its answer, ending with [sub-agent finished] or [sub-agent failed: ...]. Never invent a sub-agent\'s answer; only report what the command printed.',
     'Your sub-agents:',
-    subs.map((s) => '- ' + s.modelId + ': ' + cliFor(s.modelId) + ' "TASK"').join('\n'),
-    'Example: ' + cliFor(first.modelId) + ' "Write a haiku about rain"',
+    subs.map((s) => '- ' + s.name + ' (' + s.modelId + '): ' + cliFor(s.name) + ' "TASK"').join('\n'),
+    'Example: ' + cliFor(first.name) + ' "Write a haiku about rain"',
     'If the user asks which sub-agents you have, list the ones above. When the user gives you work, split it up, run sub-agents where they help, and then give one final answer.'
   ].join('\n');
 }
@@ -562,7 +580,9 @@ async function send(id) {
   const pending = ui.attach[id] || [];
   const text = (ui.drafts[id] || '').trim() || (pending.length ? 'Please look at the attached image' + (pending.length > 1 ? 's.' : '.') : '');
   if (!id || !text || ui.runs[id]) return;
-  const m = model(id);
+  const m = agentModel(id);
+  const node = agentNode(id);
+  if (!m || !node) return;
   const list = chats[id];
   const history = list.filter((x) => x.role === 'user' || x.role === 'assistant' || x.role === 'task').slice(-10);
   const { subs, canRun } = leaderInfo(id);
@@ -586,7 +606,7 @@ async function send(id) {
   prompt += 'User: ' + text;
 
   // Only pass the key for this model if it uses one. Sub-agent keys are handled by the app when the leader calls them.
-  const providers = S.methods[id] === 'key' ? [hOf(id).provider] : [];
+  const providers = S.methods[node.modelId] === 'key' ? [hOf(node.modelId).provider] : [];
 
   list.push({ role: 'user', text, images: pending.map((a, i) => ({ name: a.name, dataUrl: a.dataUrl, path: imagePaths[i] })) });
   ui.attach[id] = [];
@@ -633,35 +653,35 @@ api.onChunk(({ runId, text }) => {
 });
 
 // ---------- Sub-agent calls made by the leader ----------
-const subCalls = {}; // callId -> { modelId, msg, from }
+const subCalls = {}; // callId -> { agent, msg, from }
 function nowTime() { return new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
-api.onSubStart(({ callId, modelId, task, from }) => {
-  if (!chats[modelId]) chats[modelId] = [];
-  chats[modelId].push({ role: 'task', text: task, from: from || 'the leader' });
+api.onSubStart(({ callId, agent, task, from }) => {
+  if (!chats[agent]) chats[agent] = [];
+  chats[agent].push({ role: 'task', text: task, from: from || 'the leader' });
   const msg = { role: 'assistant', text: '' };
-  chats[modelId].push(msg);
-  subCalls[callId] = { modelId, msg, from: from || 'leader' };
-  ui.runs[modelId] = callId;
+  chats[agent].push(msg);
+  subCalls[callId] = { agent, msg, from: from || 'leader' };
+  ui.runs[agent] = callId;
   renderNodes();
-  if (isOpen(modelId)) renderChat(modelId); else notify(modelId);
+  if (isOpen(agent)) renderChat(agent); else notify(agent);
 });
 api.onSubChunk(({ callId, text }) => {
   const c = subCalls[callId];
   if (!c) return;
   c.msg.text += text;
-  renderMessages(c.modelId);
+  renderMessages(c.agent);
 });
-api.onSubEnd(({ callId, modelId, ok, text, error, remembered }) => {
+api.onSubEnd(({ callId, agent, ok, text, error, remembered }) => {
   const c = subCalls[callId];
   delete subCalls[callId];
-  if (ui.runs[modelId] === callId) delete ui.runs[modelId];
+  if (ui.runs[agent] === callId) delete ui.runs[agent];
   if (c) {
-    if (ok) { c.msg.text = text || c.msg.text || '(no output)'; addMemoryNote(modelId, remembered); }
-    else { if (!c.msg.text) chats[modelId].splice(chats[modelId].indexOf(c.msg), 1); chats[modelId].push({ role: 'error', text: error || 'Failed.' }); }
+    if (ok) { c.msg.text = text || c.msg.text || '(no output)'; addMemoryNote(agent, remembered); }
+    else { if (!c.msg.text) chats[agent].splice(chats[agent].indexOf(c.msg), 1); chats[agent].push({ role: 'error', text: error || 'Failed.' }); }
   }
-  lastCall[modelId] = { time: nowTime(), ok, from: c ? shortName(c.from) : 'leader' };
+  lastCall[agent] = { time: nowTime(), ok, from: c ? shortName(c.from) : 'leader' };
   renderNodes();
-  if (isOpen(modelId)) renderChat(modelId); else notify(modelId);
+  if (isOpen(agent)) renderChat(agent); else notify(agent);
 });
 
 // ---------- Role editor ----------
@@ -673,9 +693,9 @@ async function openRoleEditor(id) {
 
 function renderRoleEditor() {
   const e = ui.roleEdit;
-  const h = hOf(e.id);
+  const h = aH(e.id);
   $('#modal').innerHTML = '<div class="overlay"><div class="dialog wide" role="dialog" aria-modal="true" aria-labelledby="role-title">' +
-    '<div class="row top">' + avatar(h, 40) + '<div class="col grow gap4"><h2 id="role-title">Role and memory: ' + esc(shortName(e.id)) + '</h2>' +
+    '<div class="row top">' + avatar(h, 40) + '<div class="col grow gap4"><h2 id="role-title">Role and memory: ' + esc(e.id) + '</h2>' +
     '<p class="muted small">Read before every task. Lines the agent writes as <span class="mono">REMEMBER:</span> are added under <span class="mono"># Memory</span>.</p></div>' +
     '<button type="button" class="icon-btn" data-m="role-cancel" aria-label="Close">' + ICON.x + '</button></div>' +
     '<label class="sr" for="role-text">Role file</label>' +
@@ -696,6 +716,51 @@ api.onLoginUrl((url) => {
   ui.loginUrl = url;
   if (ui.pending) renderModal();
 });
+
+// ---------- Renaming agents ----------
+function startRename(key) {
+  ui.renaming = key;
+  renderNodes();
+  const n = nodeByKey(key);
+  const inp = document.getElementById('rename-' + key);
+  if (inp && n) { inp.value = n.name; inp.focus(); inp.select(); }
+}
+
+async function commitRename(key, raw) {
+  const n = nodeByKey(key);
+  ui.renaming = null;
+  if (!n) { renderNodes(); return; }
+  const wanted = cleanAgentName(raw);
+  if (!wanted || wanted === n.name) { renderNodes(); return; }
+  const next = uniqueAgentName(wanted, n.key);
+  await renameAgent(n, next);
+}
+
+async function renameAgent(n, next) {
+  const old = n.name;
+  const move = (obj) => { if (obj && Object.prototype.hasOwnProperty.call(obj, old)) { obj[next] = obj[old]; delete obj[old]; } };
+  [chats, lastCall, ui.runs, ui.drafts, ui.attach].forEach(move);
+  ui.open.forEach((w) => { if (w.id === old) w.id = next; });
+  ui.bubbles = ui.bubbles.map((b) => (b === old ? next : b));
+  if (ui.unread.delete(old)) ui.unread.add(next);
+  Object.values(subCalls).forEach((c) => { if (c.agent === old) c.agent = next; });
+  const win = winEl(old);
+  if (win) { win.dataset.id = next; win.setAttribute('aria-label', 'Chat with ' + next); }
+  n.name = next;
+  await api.renameRole(S.cwd, old, next);
+  save();
+  renderNodes();
+  renderAllChats();
+}
+
+// Older saves used one box per model and named role files after the model.
+// Give every box a name, and move model-named role files to the agent name.
+async function migrateAgents() {
+  S.nodes.forEach((n) => { if (!n.name || !AGENT_NAME_OK.test(n.name)) n.name = uniqueAgentName(n.name || shortName(n.modelId), n.key); });
+  const seen = new Set();
+  S.nodes.forEach((n) => { if (seen.has(n.name)) n.name = uniqueAgentName(n.name, n.key); seen.add(n.name); });
+  for (const n of S.nodes) await api.renameRole(S.cwd, n.modelId, n.name);
+}
 
 // ---------- Events ----------
 function bind() {
@@ -724,7 +789,7 @@ function bind() {
     if (!b) return;
     const id = b.dataset.disconnect;
     delete S.methods[id];
-    closeChat(id);
+    S.nodes.filter((n) => n.modelId === id).forEach((n) => closeChat(n.name));
     save();
     renderConnected();
     renderNodes();
@@ -749,7 +814,7 @@ function bind() {
 
   const nodesEl = $('#nodes');
   nodesEl.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0 || e.target.closest('button, select, label')) return;
+    if (e.button !== 0 || e.target.closest('button, select, label, input, form')) return;
     const el = e.target.closest('.node');
     if (!el) return;
     const n = S.nodes.find((o) => String(o.key) === el.dataset.key);
@@ -782,10 +847,10 @@ function bind() {
     const key = Number(b.closest('.node').dataset.key);
     const n = S.nodes.find((o) => o.key === key);
     if (!n) return;
-    if (b.dataset.act === 'role') { openRoleEditor(n.modelId); return; }
+    if (b.dataset.act === 'role') { openRoleEditor(n.name); return; }
     if (b.dataset.act === 'chat') {
-      if (isReady(n.modelId)) openChat(n.modelId);
-      else openModal(n.modelId, { noAdd: true });
+      if (isReady(n.modelId)) openChat(n.name);
+      else openModal(n.modelId, { noAdd: true, agent: n.name });
     } else if (b.dataset.act === 'leader') {
       const old = leaderNode();
       n.parent = null;
@@ -796,7 +861,9 @@ function bind() {
       renderNodes();
       renderAllChats();
     } else if (b.dataset.act === 'remove') {
-      // Its sub-agents move up to its own boss.
+      // Its sub-agents move up to its own boss. Its chat closes.
+      closeChat(n.name);
+      delete chats[n.name]; delete lastCall[n.name]; delete ui.drafts[n.name]; delete ui.attach[n.name];
       const up = n.parent;
       S.nodes = S.nodes.filter((o) => o.key !== key);
       if (S.leader === key) {
@@ -808,6 +875,27 @@ function bind() {
       renderNodes();
       renderAllChats();
     }
+  });
+  // Rename an agent: double-click its name (or press Enter on it).
+  nodesEl.addEventListener('dblclick', (e) => {
+    const b = e.target.closest('[data-act="rename"]');
+    if (b) startRename(Number(b.closest('.node').dataset.key));
+  });
+  nodesEl.addEventListener('keydown', (e) => {
+    const b = e.target.closest('[data-act="rename"]');
+    if (b && (e.key === 'Enter' || e.key === 'F2')) { e.preventDefault(); startRename(Number(b.closest('.node').dataset.key)); }
+    const inp = e.target.closest('[data-rename-form] input');
+    if (inp && e.key === 'Escape') { ui.renaming = null; renderNodes(); }
+  });
+  nodesEl.addEventListener('submit', (e) => {
+    const f = e.target.closest('[data-rename-form]');
+    if (!f) return;
+    e.preventDefault();
+    commitRename(Number(f.dataset.renameForm), f.querySelector('input').value);
+  });
+  nodesEl.addEventListener('focusout', (e) => {
+    const f = e.target.closest('[data-rename-form]');
+    if (f && ui.renaming != null) commitRename(Number(f.dataset.renameForm), f.querySelector('input').value);
   });
   nodesEl.addEventListener('change', (e) => {
     const sel = e.target.closest('select[data-parent]');
@@ -880,7 +968,7 @@ function bind() {
 
   $('#folder').addEventListener('click', async () => {
     const p = await api.pickFolder();
-    if (p) { S.cwd = p; save(); renderToolbar(); renderAllChats(); filesUI.expanded.clear(); refreshFiles(); }
+    if (p) { S.cwd = p; await migrateAgents(); save(); renderToolbar(); renderAllChats(); filesUI.expanded.clear(); refreshFiles(); }
   });
   $('#allow-run').addEventListener('change', (e) => {
     S.allowLeaderRun = e.target.checked;
@@ -903,9 +991,9 @@ async function init() {
   const saved = await api.loadState();
   if (saved) S = Object.assign(S, saved);
   S.nodes = S.nodes.filter((n) => model(n.modelId));
-  // Drop duplicate models (one box per model) and give old saves a tree.
-  S.nodes = S.nodes.filter((n, i) => S.nodes.findIndex((o) => o.modelId === n.modelId) === i);
   fixTree();
+  await migrateAgents();
+  save();
   keyStatus = await api.keyStatus();
   bind();
   renderList();

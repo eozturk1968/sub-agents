@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('api', {
   stop: (runId) => ipcRenderer.invoke('chat:stop', runId),
   readRole: (cwd, id) => ipcRenderer.invoke('role:read', cwd, id),
   writeRole: (cwd, id, text) => ipcRenderer.invoke('role:write', cwd, id, text),
+  renameRole: (cwd, from, to) => ipcRenderer.invoke('role:rename', cwd, from, to),
   rolePrompt: (cwd, id) => ipcRenderer.invoke('role:prompt', cwd, id),
   remember: (cwd, id, reply) => ipcRenderer.invoke('role:remember', cwd, id, reply),
   openRole: (cwd, id) => ipcRenderer.invoke('role:open', cwd, id),

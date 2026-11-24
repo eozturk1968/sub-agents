@@ -36,7 +36,7 @@ const SCRIPT = path.join(__dirname, 'bin', 'subagent.js');
 const BRIDGE_FILE = path.join(__dirname, 'bin', '.bridge.json');
 
 // Team info for a model on the canvas: its boss and its signed-in sub-agents.
-function teamFor(state, list, modelId) {
+function teamFor(state, list, agentName) {
   const nodes = state.nodes || [];
   const methods = state.methods || {};
   const keys = loadKeys();
@@ -45,7 +45,7 @@ function teamFor(state, list, modelId) {
     if (!mm || !methods[id]) return false;
     return methods[id] !== 'key' || !!keys[harness.HARNESSES[mm.harness].provider];
   };
-  const node = nodes.find((n) => n.modelId === modelId);
+  const node = nodes.find((n) => (n.name || n.modelId) === agentName);
   if (!node) return { kids: [], parent: null };
   return {
     kids: nodes.filter((n) => n.parent === node.key && ready(n.modelId)),
@@ -61,7 +61,7 @@ function teamBrief(kids) {
       'Each one is a separate command-line program that you call yourself by running a shell command.',
     'To give a sub-agent a task, run its command with the task as the last argument in double quotes. The Sub-Agents app then runs that model and the command prints its answer, ending with [sub-agent finished] or [sub-agent failed: ...]. Never invent a sub-agent\'s answer; only report what the command printed.',
     'Your sub-agents:',
-    kids.map((k) => '- ' + k.modelId + ': ' + cmd(k.modelId) + ' "TASK"').join('\n'),
+    kids.map((k) => '- ' + (k.name || k.modelId) + ' (' + k.modelId + '): ' + cmd(k.name || k.modelId) + ' "TASK"').join('\n'),
     'Split the work, use sub-agents where they help, then give one final answer.'
   ].join('\n');
 }
@@ -79,9 +79,15 @@ function startBridge() {
       try { p = JSON.parse(body); } catch (e) { res.writeHead(400); res.end('Bad request.'); return; }
       if (p.token !== token) { res.writeHead(403); res.end('Forbidden.'); return; }
       const list = readJson(path.join(__dirname, 'models.json'), []);
-      const m = list.find((x) => x.id === p.modelId);
-      if (!m) { res.writeHead(404); res.end('Unknown sub-agent: ' + p.modelId + '. Known: ' + list.map((x) => x.id).join(', ')); return; }
       const state = readJson(file('state.json'), {});
+      // Sub-agents are called by agent name (older callers sent a model id).
+      const agentName = String(p.agent || p.modelId || '');
+      const nodes = state.nodes || [];
+      const node = nodes.find((n) => (n.name || n.modelId) === agentName) || nodes.find((n) => n.modelId === agentName);
+      if (!node) { res.writeHead(404); res.end('No agent named ' + agentName + ' on the canvas. Agents: ' + nodes.map((n) => n.name || n.modelId).join(', ')); return; }
+      const name = node.name || node.modelId;
+      const m = list.find((x) => x.id === node.modelId);
+      if (!m) { res.writeHead(404); res.end(node.modelId + ' is not in models.json.'); return; }
       const method = (state.methods || {})[m.id];
       if (!method) { res.writeHead(409); res.end(m.id + ' is not signed in. Connect it in the Sub-Agents app first.'); return; }
       const keys = {};
@@ -89,16 +95,16 @@ function startBridge() {
       if (method === 'key') { const all = loadKeys(); if (all[provider]) keys[provider] = all[provider]; }
 
       const task = String(p.task || '');
-      const team = teamFor(state, list, m.id);
+      const team = teamFor(state, list, name);
       // A sub-agent with its own sub-agents gets the same team instructions as the leader.
       const canRun = team.kids.length > 0 && (m.harness === 'claude' || !!state.allowLeaderRun);
-      const prompt = roles.rolePrompt(state.cwd, m.id) + '\n\n' +
+      const prompt = roles.rolePrompt(state.cwd, name) + '\n\n' +
         (canRun ? teamBrief(team.kids) + '\n\n' : '') +
         'Task from the agent you report to:\n' + task;
 
       const callId = crypto.randomUUID();
       res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
-      send('sub:start', { callId, modelId: m.id, task, from: team.parent ? team.parent.modelId : 'leader' });
+      send('sub:start', { callId, agent: name, task, from: team.parent ? (team.parent.name || team.parent.modelId) : 'leader' });
       const r = await harness.run(
         {
           runId: callId, harness: m.harness, model: m.model, prompt, cwd: state.cwd,
@@ -106,13 +112,13 @@ function startBridge() {
           fullAccess: canRun && m.harness !== 'claude'
         },
         keys,
-        (t) => { res.write(t); send('sub:chunk', { callId, modelId: m.id, text: t }); }
+        (t) => { res.write(t); send('sub:chunk', { callId, agent: name, text: t }); }
       );
       if (r.ok && m.harness === 'codex') res.write(r.text || '');
       res.end(r.ok ? '\n[sub-agent finished]\n' : '\n[sub-agent failed: ' + r.error + ']\n');
       let remembered = [];
-      if (r.ok) { try { remembered = roles.remember(state.cwd, m.id, r.text); } catch (e) { /* folder not writable */ } }
-      send('sub:end', { callId, modelId: m.id, ok: r.ok, text: r.text, error: r.error, remembered });
+      if (r.ok) { try { remembered = roles.remember(state.cwd, name, r.text); } catch (e) { /* folder not writable */ } }
+      send('sub:end', { callId, agent: name, ok: r.ok, text: r.text, error: r.error, remembered });
     });
   });
   server.listen(0, '127.0.0.1', () => {
@@ -191,7 +197,7 @@ ipcMain.handle('team:save', async (_e, cwd, team, suggested) => {
       properties: ['createDirectory', 'showOverwriteConfirmation']
     });
     if (r.canceled || !r.filePath) return { ok: false, canceled: true };
-    const ids = [...new Set((team.nodes || []).map((n) => n.modelId))];
+    const ids = [...new Set((team.nodes || []).map((n) => n.name || n.modelId))];
     const roleTexts = {};
     ids.forEach((id) => { const rr = roles.readRole(cwd, id); if (rr.exists) roleTexts[id] = rr.text; });
     const name = path.basename(r.filePath).replace(/\.team\.json$|\.json$/i, '');
@@ -255,6 +261,7 @@ ipcMain.handle('images:save', (_e, cwd, files) => {
 });
 ipcMain.handle('role:read', (_e, cwd, id) => roles.readRole(cwd, id));
 ipcMain.handle('role:write', (_e, cwd, id, text) => roles.writeRole(cwd, id, text));
+ipcMain.handle('role:rename', (_e, cwd, from, to) => { try { return roles.renameRole(cwd, from, to); } catch (e) { return false; } });
 ipcMain.handle('role:prompt', (_e, cwd, id) => roles.rolePrompt(cwd, id));
 ipcMain.handle('role:remember', (_e, cwd, id, reply) => { try { return roles.remember(cwd, id, reply); } catch (e) { return []; } });
 ipcMain.handle('role:open', (_e, cwd, id) => {

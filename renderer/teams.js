@@ -1,5 +1,5 @@
 'use strict';
-/* global api, S, ui, $, esc, model, fixTree, save, renderNodes, renderList, renderAllChats, renderToolbar, renderModal, refreshFiles, ICON */
+/* global api, S, ui, $, esc, model, shortName, uniqueAgentName, fixTree, save, renderNodes, renderList, renderAllChats, renderToolbar, renderModal, refreshFiles, ICON */
 // Save the canvas as a named team file, and open team files again.
 // Loaded before renderer.js; everything here runs after renderer.js has set up.
 
@@ -10,7 +10,7 @@ function teamLayout() {
     leader: S.leader,
     allowLeaderRun: !!S.allowLeaderRun,
     nodes: S.nodes.map((n) => ({
-      key: n.key, modelId: n.modelId, x: Math.round(n.x), y: Math.round(n.y), parent: n.parent == null ? null : n.parent
+      key: n.key, modelId: n.modelId, name: n.name, x: Math.round(n.x), y: Math.round(n.y), parent: n.parent == null ? null : n.parent
     }))
   };
 }
@@ -61,12 +61,22 @@ function requestLoad(team) {
 
 async function loadTeam(team) {
   const known = team.nodes.filter((n) => model(n.modelId));
-  const unique = known.filter((n, i) => known.findIndex((o) => o.modelId === n.modelId) === i);
   const skipped = [...new Set(team.nodes.filter((n) => !model(n.modelId)).map((n) => n.modelId))];
-  S.nodes = unique.map((n) => ({
-    key: Number(n.key), modelId: n.modelId, x: Number(n.x) || 0, y: Number(n.y) || 0,
-    parent: n.parent == null ? null : Number(n.parent)
-  }));
+  S.nodes = [];
+  known.forEach((n) => {
+    S.nodes.push({
+      key: Number(n.key), modelId: n.modelId, name: uniqueAgentName(n.name || shortName(n.modelId)),
+      x: Number(n.x) || 0, y: Number(n.y) || 0, parent: n.parent == null ? null : Number(n.parent)
+    });
+  });
+  // Older team files keyed roles by model id; map them to agent names.
+  const roleTexts = {};
+  const src = team.roles || {};
+  S.nodes.forEach((n, i) => {
+    const orig = known[i];
+    const t = src[orig.name] != null ? src[orig.name] : src[n.modelId];
+    if (t != null) roleTexts[n.name] = t;
+  });
   const leader = Number(team.leader);
   S.leader = S.nodes.some((n) => n.key === leader) ? leader : (S.nodes[0] ? S.nodes[0].key : null);
   S.nextKey = Math.max(0, ...S.nodes.map((n) => n.key)) + 1;
@@ -80,7 +90,7 @@ async function loadTeam(team) {
   renderAllChats();
   renderToolbar();
 
-  const rr = await api.applyTeamRoles(S.cwd, team.roles || {});
+  const rr = await api.applyTeamRoles(S.cwd, roleTexts);
   const parts = ['Opened team "' + S.teamName + '".'];
   if (rr.created.length) parts.push('Added role files for ' + rr.created.length + ' agent' + (rr.created.length === 1 ? '' : 's') + '.');
   if (rr.kept.length) parts.push('Kept this project\'s own roles for: ' + rr.kept.join(', ') + '.');

@@ -81,4 +81,13 @@ function remember(cwd, modelId, replyText) {
   return fresh;
 }
 
-module.exports = { rolePath, readRole, writeRole, rolePrompt, remember, extractRemember };
+// Move a role file to a new agent name, only if the new name has no role file yet.
+function renameRole(cwd, from, to) {
+  const a = rolePath(cwd, from);
+  const b = rolePath(cwd, to);
+  if (a === b || !fs.existsSync(a) || fs.existsSync(b)) return false;
+  fs.renameSync(a, b);
+  return true;
+}
+
+module.exports = { rolePath, readRole, writeRole, rolePrompt, remember, extractRemember, renameRole };
