@@ -46,9 +46,22 @@ const ICON = {
   send: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>'
 };
 
+// ---------- Platform ----------
+const IS_WIN = api.platform === 'win32';
+const IS_MAC = api.platform === 'darwin';
+const MOD = IS_MAC ? 'Cmd' : 'Ctrl';
+const FILE_MANAGER = IS_MAC ? 'Finder' : IS_WIN ? 'File Explorer' : 'file manager';
+if (IS_WIN) {
+  // Windows install commands (run in PowerShell).
+  HARNESS.claude.install = 'irm https://claude.ai/install.ps1 | iex';
+  HARNESS.antigravity.install = 'See antigravity.google/docs/getting-started (Windows tab)';
+}
+HARNESS.claude.subDesc = HARNESS.claude.subDesc.replace('this Mac', 'this computer');
+
 // ---------- State ----------
 let MODELS = [];
 let SCRIPT = '';
+let LEADER_BASE = [];
 const lastCall = {}; // agent name -> { time, ok, from }
 let S = { nodes: [], leader: null, nextKey: 1, methods: {}, cwd: null, allowLeaderRun: false };
 const chats = {};          // agent name -> [{ role, text }]
@@ -629,7 +642,7 @@ async function send(id) {
     cwd,
     providers,
     images: imagePaths,
-    leaderTools: canRun && m.harness === 'claude' ? ['Bash(' + SCRIPT + ':*)', ...(S.claudeLeaderTools || [])] : null,
+    leaderTools: canRun && m.harness === 'claude' ? [...LEADER_BASE, ...(S.claudeLeaderTools || [])] : null,
     fullAccess: !!(canRun && m.harness !== 'claude')
   });
 
@@ -1044,6 +1057,9 @@ function removedNotice(results) {
 async function init() {
   MODELS = (await api.listModels()).filter((m) => HARNESS[m.harness]);
   SCRIPT = await api.subagentScript();
+  LEADER_BASE = await api.leaderBase();
+  // Shortcut hints: Cmd on Mac, Ctrl elsewhere.
+  if (!IS_MAC) document.querySelectorAll('[title]').forEach((el) => { el.title = el.title.replace(/\bCmd\b/g, MOD); });
   loadSavedState(await api.loadState());
   // Check every tab: drop unknown models, fix the tree, give every agent a valid name unique across tabs.
   const startTab = ACTIVE;

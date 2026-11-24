@@ -33,6 +33,8 @@ contextBridge.exposeInMainWorld('api', {
   applyTeamRoles: (cwd, roleTexts) => ipcRenderer.invoke('team:roles', cwd, roleTexts),
   editModels: () => ipcRenderer.invoke('models:edit'),
   subagentScript: () => ipcRenderer.invoke('bridge:script'),
+  leaderBase: () => ipcRenderer.invoke('leader:base'),
+  platform: process.platform,
   onSubStart: (cb) => ipcRenderer.on('sub:start', (_e, d) => cb(d)),
   onSubChunk: (cb) => ipcRenderer.on('sub:chunk', (_e, d) => cb(d)),
   onSubEnd: (cb) => ipcRenderer.on('sub:end', (_e, d) => cb(d)),

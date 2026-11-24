@@ -46,7 +46,7 @@ This builds `Sub-Agents.dmg` so you can open the app from Applications with a do
 npm install
 ```
 ```
-npm run dist
+npm run dist:mac
 ```
 
 Then open the `dist` folder, double-click the `.dmg` file (`arm64` for Apple Silicon Macs, the other one for Intel Macs) and drag **Sub-Agents** into **Applications**.
@@ -59,6 +59,46 @@ The app isn't signed by Apple, so the first time macOS will block it. To open it
 To give the app to other people without that warning, it has to be signed with an Apple Developer ID and notarized by Apple (needs a paid Apple Developer account).
 
 The app finds `claude`, `codex` and `agy` through your shell's `PATH`, so tools installed with Homebrew or npm work when it's opened from Finder too. The sub-agent command is written to `~/.sub-agents/bin/subagent` each time the app starts.
+
+## Windows
+
+Sub-Agents also runs on Windows 10 (1809 or newer) and Windows 11. Build the installer on the Windows PC itself.
+
+**1. Install what the build needs (once):**
+
+- **Node.js LTS** from nodejs.org.
+- **Git for Windows** from git-scm.com. Claude Code uses its Git Bash for shell commands. Without it, Claude Code falls back to PowerShell, which also works.
+
+**2. Install the AI tools you want (once), in PowerShell:**
+
+- Claude Code: `irm https://claude.ai/install.ps1 | iex` (or `winget install Anthropic.ClaudeCode`), then run `claude` once to log in.
+- Codex: `npm install -g @openai/codex`, then run `codex` once and choose **Sign in with ChatGPT**.
+- Antigravity CLI (`agy`): use the **Windows** command on antigravity.google/docs/getting-started, then run `agy` once to sign in.
+
+Open a new PowerShell window after installing, so the new commands are found.
+
+**3. Build and install Sub-Agents.** In PowerShell, one line at a time:
+
+```
+git clone https://github.com/eozturk1968/sub-agents.git
+```
+```
+cd sub-agents
+```
+```
+npm install
+```
+```
+npm run dist:win
+```
+
+The installer is `dist\Sub-Agents Setup 0.1.0.exe`. Double-click it. It installs for your user only and doesn't need admin rights.
+
+The app isn't signed, so Windows SmartScreen may say **Windows protected your PC**. Click **More info**, then **Run anyway**. Removing that warning needs a paid code-signing certificate.
+
+To update later: `git pull`, then `npm install`, then `npm run dist:win`, then run the new installer.
+
+**How it differs on Windows:** the sub-agent launcher is written to `%USERPROFILE%\.sub-agents\bin` (`subagent.cmd` for PowerShell/CMD, `subagent` for Git Bash), and that folder is added to the PATH of every tool the app starts, so leaders just run `subagent AGENT_NAME "TASK"`. The app also reads your current PATH from the registry, so tools installed after you logged in are found. Shortcuts use Ctrl instead of Cmd.
 
 ## Using it
 
@@ -80,8 +120,10 @@ The app finds `claude`, `codex` and `agy` through your shell's `PATH`, so tools 
 When you message a model that has sub-agents, it's told it can run:
 
 ```
-node bin/subagent.js AGENT_NAME "TASK"
+subagent AGENT_NAME "TASK"
 ```
+
+(on a Mac the full path `~/.sub-agents/bin/subagent` is used)
 
 That script asks the running app to run the sub-agent's own CLI. Because the app does the run, every call is visible:
 
@@ -111,7 +153,7 @@ You can open them in the Files tab and copy anything back into a new agent's rol
 
 ### Permissions
 
-- A **Claude** model that leads a team is only allowed to run the sub-agent script. Nothing else is auto-approved. To allow more (for example `Bash(python3:*)`, `Read`, `WebSearch`), click the gear button and add them under **Extra permissions for Claude leaders**, one per line.
+- A **Claude** model that leads a team is only allowed to run the sub-agent command (on Windows: through Git Bash or PowerShell). Nothing else is auto-approved. To allow more (for example `Bash(python3:*)`, `Read`, `WebSearch`), click the gear button and add them under **Extra permissions for Claude leaders**, one per line.
 - A **Codex, Antigravity or Gemini** model that leads a team needs **Let leader run sub-agents** turned on. That runs Codex with `--sandbox danger-full-access`, Antigravity with `--dangerously-skip-permissions` and Gemini CLI with `--yolo`, so **they can run any command without asking**. Only turn it on with a project folder you're OK with them changing.
 
 ## Models

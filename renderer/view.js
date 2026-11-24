@@ -135,7 +135,8 @@ function bindView() {
     const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? cv.clientHeight : 1;
     const dx = e.deltaX * unit;
     const dy = e.deltaY * unit;
-    if (e.ctrlKey) { zoomAt(Math.exp(-dy * 0.01), e.clientX - r.left, e.clientY - r.top); return; } // pinch
+    // Trackpad pinch (small steps) or Ctrl + mouse wheel on Windows/Linux (big steps).
+    if (e.ctrlKey) { zoomAt(Math.exp(-dy * (Math.abs(dy) < 50 ? 0.01 : 0.0015)), e.clientX - r.left, e.clientY - r.top); return; }
     if (e.metaKey || S.scrollZooms) { zoomAt(Math.exp(-dy * 0.0015), e.clientX - r.left, e.clientY - r.top); return; }
     panBy(-dx, -dy);
   }, { passive: false });

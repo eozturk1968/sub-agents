@@ -8,7 +8,7 @@ const HARNESSES = {
   claude: {
     name: 'Claude Code',
     bin: 'claude',
-    install: 'npm install -g @anthropic-ai/claude-code',
+    install: process.platform === 'win32' ? 'irm https://claude.ai/install.ps1 | iex   (in PowerShell)' : 'curl -fsSL https://claude.ai/install.sh | bash',
     keyEnv: ['ANTHROPIC_API_KEY'],
     provider: 'anthropic',
     args(model, prompt, opts) {
@@ -40,7 +40,7 @@ const HARNESSES = {
     // Some reports say agy -p hangs without a terminal. On macOS it works fine piped,
     // and `script` can't start from a GUI app, so this stays off. See spawnTool.
     needsTty: false,
-    install: 'curl -fsSL https://antigravity.google/cli/install.sh | bash',
+    install: process.platform === 'win32' ? 'the Windows command at antigravity.google/docs/getting-started' : 'curl -fsSL https://antigravity.google/cli/install.sh | bash',
     keyEnv: [],
     clearEnv: ['GEMINI_API_KEY', 'GOOGLE_API_KEY'],
     provider: 'google',
@@ -173,10 +173,11 @@ function stop(runId) {
 // Subscription sign-in. Only Codex supports it here ("Sign in with ChatGPT").
 // Claude Code / Gemini CLI: check the tool is already logged in on this computer
 // by running a tiny prompt with no API key.
+const TERM = process.platform === 'win32' ? 'PowerShell' : 'Terminal';
 const LOGIN_HELP = {
-  claude: "Claude Code isn't logged in. Open Terminal, run: claude  then log in with your Claude account, quit it, and click the button again.",
-  gemini: "Gemini CLI isn't logged in. Open Terminal, run: gemini  then choose Login with Google, finish in your browser, quit it, and click the button again.",
-  antigravity: "Antigravity CLI isn't signed in. Open Terminal, run: agy  then sign in with your Google account, trust the folder if it asks, quit it with /quit, and click the button again."
+  claude: "Claude Code isn't logged in. Open " + TERM + ", run: claude  then log in with your Claude account, quit it, and click the button again.",
+  gemini: "Gemini CLI isn't logged in. Open " + TERM + ", run: gemini  then choose Login with Google, finish in your browser, quit it, and click the button again.",
+  antigravity: "Antigravity CLI isn't signed in. Open " + TERM + ", run: agy  then sign in with your Google account, trust the folder if it asks, quit it with /quit, and click the button again."
 };
 function checkCliLogin(harness) {
   const h = HARNESSES[harness];

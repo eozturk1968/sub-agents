@@ -17,6 +17,9 @@ function safePath(cwd, rel) {
   return full;
 }
 
+// Paths go to the window with forward slashes on every system.
+const toRel = (p) => String(p).split(path.sep).join('/');
+
 const wrap = (fn) => async (...args) => {
   try { return { ok: true, ...(await fn(...args)) }; } catch (e) { return { ok: false, error: e.message }; }
 };
@@ -26,7 +29,7 @@ const list = wrap((cwd, rel) => {
   if (!fs.existsSync(dir)) return { entries: [] };
   const entries = fs.readdirSync(dir, { withFileTypes: true })
     .filter((d) => !HIDDEN.has(d.name))
-    .map((d) => ({ name: d.name, rel: path.join(rel || '', d.name), dir: d.isDirectory() }))
+    .map((d) => ({ name: d.name, rel: toRel(path.join(rel || '', d.name)), dir: d.isDirectory() }))
     .sort((a, b) => (a.dir === b.dir ? a.name.localeCompare(b.name) : a.dir ? -1 : 1));
   return { entries };
 });
@@ -52,13 +55,13 @@ const write = wrap((cwd, rel, text) => {
   if (!rel || full === path.resolve(cwd)) throw new Error('Give the file a name.');
   fs.mkdirSync(path.dirname(full), { recursive: true });
   fs.writeFileSync(full, String(text));
-  return { rel: path.relative(path.resolve(cwd), full) };
+  return { rel: toRel(path.relative(path.resolve(cwd), full)) };
 });
 
 const mkdir = wrap((cwd, rel) => {
   const full = safePath(cwd, rel);
   fs.mkdirSync(full, { recursive: true });
-  return { rel: path.relative(path.resolve(cwd), full) };
+  return { rel: toRel(path.relative(path.resolve(cwd), full)) };
 });
 
 const exists = wrap((cwd, rel) => ({ exists: fs.existsSync(safePath(cwd, rel)) }));

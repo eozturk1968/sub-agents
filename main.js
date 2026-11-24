@@ -34,31 +34,29 @@ function saveKeys(keys) {
 const send = (ch, data) => { if (win && !win.isDestroyed()) win.webContents.send(ch, data); };
 // ---------- Paths that must work when the app is launched from Finder ----------
 const os = require('os');
+const platform = require('./platform');
 const HOME_DIR = path.join(os.homedir(), '.sub-agents');
 // The script lives inside the app; packaged builds unpack it so plain node/Electron can run it.
 const SCRIPT_JS = path.join(__dirname, 'bin', 'subagent.js').replace('app.asar' + path.sep, 'app.asar.unpacked' + path.sep);
 // Leaders call sub-agents with this small launcher. It runs the script with the app's own
 // runtime (ELECTRON_RUN_AS_NODE), so Node doesn't need to be installed.
-const SCRIPT = path.join(HOME_DIR, 'bin', 'subagent');
+const BIN_DIR = path.join(HOME_DIR, 'bin');
+const SCRIPT = path.join(BIN_DIR, 'subagent');
+const SUBAGENT_CMD = platform.subagentCommand(process.platform, SCRIPT); // what leaders type
 const BRIDGE_FILE = path.join(HOME_DIR, 'bridge.json');
 
 function writeLauncher() {
-  fs.mkdirSync(path.dirname(SCRIPT), { recursive: true });
-  const q = (s) => "'" + String(s).replace(/'/g, "'\\''") + "'";
-  fs.writeFileSync(SCRIPT, [
-    '#!/bin/sh',
-    '# Sub-Agents: hands a task to a sub-agent through the running app.',
-    '# Usage: subagent AGENT_NAME "TASK"   (rewritten each time the app starts)',
-    'ELECTRON_RUN_AS_NODE=1 exec ' + q(process.execPath) + ' ' + q(SCRIPT_JS) + ' "$@"',
-    ''
-  ].join('\n'), { mode: 0o755 });
-  fs.chmodSync(SCRIPT, 0o755);
+  fs.mkdirSync(BIN_DIR, { recursive: true });
+  for (const f of platform.launcherFiles(process.platform, { binDir: BIN_DIR, execPath: process.execPath, scriptJs: SCRIPT_JS })) {
+    fs.writeFileSync(f.file, f.content, f.mode ? { mode: f.mode } : undefined);
+    if (f.mode) fs.chmodSync(f.file, f.mode);
+  }
 }
 
-// Apps opened from Finder don't get the PATH from your shell, so claude/codex/agy
-// wouldn't be found. Ask the login shell for its PATH once at startup.
+// Apps opened from Finder (or the Start menu) don't get the PATH from your shell, so
+// claude/codex/agy wouldn't be found. Fix the PATH once at startup.
 function loadShellPath() {
-  if (process.platform === 'win32') return;
+  if (process.platform === 'win32') return loadWindowsPath();
   const extra = ['/opt/homebrew/bin', '/usr/local/bin', path.join(os.homedir(), '.local', 'bin'), path.join(os.homedir(), '.npm-global', 'bin')];
   let shellPath = '';
   try {
@@ -67,8 +65,25 @@ function loadShellPath() {
     const m = /__SA_PATH__(.*)__SA_PATH__/.exec(out);
     if (m) shellPath = m[1];
   } catch (e) { /* fall back to the usual folders */ }
-  const parts = [...shellPath.split(':'), ...(process.env.PATH || '').split(':'), ...extra].filter(Boolean);
-  process.env.PATH = [...new Set(parts)].join(':');
+  process.env.PATH = platform.mergePath(process.platform, [shellPath, process.env.PATH, extra.join(':')]);
+}
+
+// Windows: read the current user and system PATH from the registry (tools installed
+// after you logged in are only there), then add the usual install folders. The
+// launcher folder goes first, so leaders can type just: subagent NAME "TASK".
+function loadWindowsPath() {
+  const reg = (key) => {
+    try {
+      const out = require('child_process').execFileSync('reg', ['query', key, '/v', 'Path'],
+        { encoding: 'utf8', timeout: 5000, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+      return platform.expandWinVars(platform.parseRegPath(out), process.env);
+    } catch (e) { return ''; }
+  };
+  const user = reg('HKCU\\Environment');
+  const system = reg('HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment');
+  const dirs = platform.windowsToolDirs(process.env, os.homedir());
+  const pathKey = Object.keys(process.env).find((k) => k.toLowerCase() === 'path') || 'Path';
+  process.env[pathKey] = platform.mergePath('win32', [dirs.join(';'), process.env[pathKey], user, system]);
 }
 
 // The model list. In the packaged app the built-in list can't be edited, so a copy
@@ -113,7 +128,7 @@ function teamFor(state, tab, list, agentName) {
 }
 
 function teamBrief(kids) {
-  const cmd = (id) => SCRIPT + ' ' + id;
+  const cmd = (id) => SUBAGENT_CMD + ' ' + id;
   return [
     'You lead a team of AI agents in the Sub-Agents app.',
     'Your sub-agents are NOT part of this conversation or thread, and they will never show up in any built-in agent list or roster. ' +
@@ -248,7 +263,9 @@ ipcMain.handle('chat:send', (_e, opts) => {
   for (const p of opts.providers || []) if (all[p]) keys[p] = all[p];
   return harness.run(opts, keys, (text) => win && win.webContents.send('chat:chunk', { runId: opts.runId, text }));
 });
-ipcMain.handle('bridge:script', () => SCRIPT);
+ipcMain.handle('bridge:script', () => SUBAGENT_CMD);
+ipcMain.handle('leader:base', () => platform.leaderBaseTools(process.platform, SCRIPT));
+ipcMain.handle('app:platform', () => process.platform);
 // ---------- Team files ----------
 // A team file holds the canvas layout, the leader setting and each agent's role file.
 // It never holds API keys or sign-ins.
@@ -347,7 +364,7 @@ ipcMain.handle('chat:stop', (_e, runId) => harness.stop(runId));
 // permissions added in Settings (for example Bash(python3:*) or Read).
 function claudeLeaderTools(state) {
   const extra = Array.isArray(state.claudeLeaderTools) ? state.claudeLeaderTools : [];
-  return ['Bash(' + SCRIPT + ':*)', ...extra.map((t) => String(t).trim()).filter(Boolean)];
+  return [...platform.leaderBaseTools(process.platform, SCRIPT), ...extra.map((t) => String(t).trim()).filter(Boolean)];
 }
 ipcMain.handle('leader:tools', () => claudeLeaderTools(readJson(file('state.json'), {})));
 
@@ -356,6 +373,7 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
+  if (process.platform === 'win32') app.setAppUserModelId('com.erdincozturk.subagents');
   app.whenReady().then(() => { loadShellPath(); writeLauncher(); startBridge(); createWindow(); });
 }
 app.on('quit', () => { try { fs.unlinkSync(BRIDGE_FILE); } catch (e) { /* already gone */ } });

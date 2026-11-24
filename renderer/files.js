@@ -156,7 +156,7 @@ function renderEditor() {
   let body;
   if (e.kind === 'text') body = '<label class="sr" for="editor-text">File contents</label><textarea id="editor-text" class="role-text mono" spellcheck="false"></textarea>';
   else if (e.kind === 'image') body = '<div class="editor-image"><img src="' + e.dataUrl + '" alt="' + esc(baseName(e.rel)) + '"></div>';
-  else body = '<p class="note">This file can\'t be shown here. Open it in its Mac app instead.</p>';
+  else body = '<p class="note">This file can\'t be shown here. Open it in its own app instead.</p>';
   const isDraft = e.rel.startsWith(DRAFTS + '/');
   $('#modal').innerHTML = '<div class="overlay"><div class="dialog wide" role="dialog" aria-modal="true" aria-labelledby="editor-title">' +
     '<div class="row top"><div class="col grow gap4"><h2 id="editor-title">' + (isDraft ? 'Draft' : 'File') + '</h2>' +
@@ -165,10 +165,10 @@ function renderEditor() {
       : '<span class="mono small">' + esc(e.rel) + '</span>') +
     '</div><button type="button" class="icon-btn" data-e="close" aria-label="Close">' + ICON.x + '</button></div>' +
     body +
-    '<p id="editor-status" class="small ' + (e.msg && /^Saved/.test(e.msg) ? 'ok-text' : 'muted') + '" role="status">' + esc(e.msg || (editorDirty() ? 'Unsaved changes. Cmd+S saves.' : ' ')) + '</p>' +
+    '<p id="editor-status" class="small ' + (e.msg && /^Saved/.test(e.msg) ? 'ok-text' : 'muted') + '" role="status">' + esc(e.msg || (editorDirty() ? 'Unsaved changes. ' + MOD + '+S saves.' : ' ')) + '</p>' +
     '<div class="actions editor-actions">' +
-    '<button type="button" class="btn" data-e="open">Open in Mac app</button>' +
-    '<button type="button" class="btn" data-e="reveal">Show in Finder</button>' +
+    '<button type="button" class="btn" data-e="open">Open in its app</button>' +
+    '<button type="button" class="btn" data-e="reveal">Show in ' + FILE_MANAGER + '</button>' +
     '<span class="send-to"><label class="sr" for="editor-send">Agent</label>' +
     (targets.length
       ? '<select id="editor-send">' + targets.map((id) => '<option value="' + esc(id) + '"' + (id === e.sendTo ? ' selected' : '') + '>' + esc(id) + '</option>').join('') + '</select>' +
@@ -202,7 +202,7 @@ function renderEditor() {
 function updateEditorStatus() {
   const e = ui.editor;
   const el = $('#editor-status');
-  if (el && e) el.textContent = e.msg || (editorDirty() ? 'Unsaved changes. Cmd+S saves.' : ' ');
+  if (el && e) el.textContent = e.msg || (editorDirty() ? 'Unsaved changes. ' + MOD + '+S saves.' : ' ');
 }
 
 async function saveEditor() {
