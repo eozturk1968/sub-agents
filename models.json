@@ -11,5 +11,5 @@
   { "id": "openai/gpt-6-sol", "harness": "codex", "model": "gpt-6-sol" },
   { "id": "openai/gpt-6-luna", "harness": "codex", "model": "gpt-6-luna" },
   { "id": "openai/gpt-5.6-sol", "harness": "codex", "model": "gpt-5.6-sol" },
-  { "id": "google/gemini", "harness": "gemini", "model": "gemini-2.5-pro" }
+  { "id": "google/gemini", "harness": "antigravity", "model": "" }
 ]

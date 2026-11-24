@@ -31,6 +31,22 @@ const HARNESSES = {
       return a;
     }
   },
+  // Google's replacement for Gemini CLI. Uses the Google login cached by running `agy` once.
+  antigravity: {
+    name: 'Antigravity CLI',
+    bin: 'agy',
+    install: 'curl -fsSL https://antigravity.google/cli/install.sh | bash',
+    keyEnv: [],
+    clearEnv: ['GEMINI_API_KEY', 'GOOGLE_API_KEY'],
+    provider: 'google',
+    args(model, prompt, opts) {
+      const a = [];
+      if (model) a.push('--model', model);
+      if (opts.fullAccess) a.push('--dangerously-skip-permissions');
+      a.push('-p', prompt);
+      return a;
+    }
+  },
   gemini: {
     name: 'Gemini CLI',
     bin: 'gemini',
@@ -129,7 +145,8 @@ function stop(runId) {
 // by running a tiny prompt with no API key.
 const LOGIN_HELP = {
   claude: "Claude Code isn't logged in. Open Terminal, run: claude  then log in with your Claude account, quit it, and click the button again.",
-  gemini: "Gemini CLI isn't logged in. Open Terminal, run: gemini  then choose Login with Google, finish in your browser, quit it, and click the button again."
+  gemini: "Gemini CLI isn't logged in. Open Terminal, run: gemini  then choose Login with Google, finish in your browser, quit it, and click the button again.",
+  antigravity: "Antigravity CLI isn't signed in. Open Terminal, run: agy  then sign in with your Google account, trust the folder if it asks, quit it with /quit, and click the button again."
 };
 function checkCliLogin(harness) {
   const h = HARNESSES[harness];
@@ -151,7 +168,7 @@ function checkCliLogin(harness) {
 }
 
 function login(harness, onUrl) {
-  if (harness === 'claude' || harness === 'gemini') return checkCliLogin(harness);
+  if (harness === 'claude' || harness === 'gemini' || harness === 'antigravity') return checkCliLogin(harness);
   if (harness !== 'codex') return Promise.resolve({ ok: false, error: 'Subscription sign-in is not available for this model.' });
   return new Promise((resolve) => {
     let log = '';

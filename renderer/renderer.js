@@ -16,6 +16,14 @@ const HARNESS = {
     keyName: 'OpenAI API key', ph: 'sk-...', letter: 'O', bg: '#D9F2EA', fg: '#0F7A5C',
     install: 'npm install -g @openai/codex', tool: 'Bash(codex exec:*)', short: 'codex exec'
   },
+  antigravity: {
+    name: 'Antigravity CLI', provider: 'google', providerName: 'Google', allowSub: true, keyAllowed: false,
+    subLabel: 'Use my Antigravity login',
+    subDesc: 'Uses the Google account you are signed into in Antigravity CLI on this computer. For your own use only.',
+    keyName: 'Gemini API key', ph: 'AIza...', letter: 'G', bg: '#DBE7FE', fg: '#1D4ED8',
+    install: 'curl -fsSL https://antigravity.google/cli/install.sh | bash', tool: 'Bash(agy:*)', short: 'agy -p',
+    note: 'Antigravity CLI uses your Google sign-in.'
+  },
   gemini: {
     name: 'Gemini CLI', provider: 'google', providerName: 'Google', allowSub: true, subLabel: 'Use my Gemini CLI login',
     subDesc: 'Uses the Google account you are logged into in Gemini CLI on this computer. For your own use only.',
@@ -262,8 +270,8 @@ function renderModal() {
     body += '<div class="options">' +
       '<button type="button" class="option' + (sub ? ' on' : '') + '" data-m="pick-sub" aria-pressed="' + sub + '">' + ICON.user +
       '<span class="col grow gap4"><strong>' + h.subLabel + '</strong><span class="muted small">' + esc(h.subDesc) + '</span></span><span class="radio" aria-hidden="true"></span></button>' +
-      '<button type="button" class="option' + (!sub ? ' on' : '') + '" data-m="pick-key" aria-pressed="' + !sub + '">' + ICON.key +
-      '<span class="col grow gap4"><strong>Use an API key</strong><span class="muted small">Pay per use with your own key</span></span><span class="radio" aria-hidden="true"></span></button></div>';
+      (h.keyAllowed === false ? '' : '<button type="button" class="option' + (!sub ? ' on' : '') + '" data-m="pick-key" aria-pressed="' + !sub + '">' + ICON.key +
+      '<span class="col grow gap4"><strong>Use an API key</strong><span class="muted small">Pay per use with your own key</span></span><span class="radio" aria-hidden="true"></span></button>') + '</div>';
   } else {
     body += '<p class="note">' + esc(h.note) + '</p>';
   }
@@ -277,7 +285,7 @@ function renderModal() {
   }
   if (ui.modalError) body += '<p class="error">' + esc(ui.modalError) + '</p>';
 
-  const viaCli = m.harness === 'claude' || m.harness === 'gemini';
+  const viaCli = m.harness === 'claude' || m.harness === 'gemini' || m.harness === 'antigravity';
   const label = ui.busyLogin ? (viaCli ? 'Checking your ' + h.name + ' login…' : 'Waiting for sign-in…') : (sub ? (viaCli ? 'Connect' : h.subLabel) : 'Save and connect');
   el.innerHTML = '<div class="overlay"><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-title">' +
     '<div class="row top">' + avatar(h, 40) + '<div class="col grow gap4"><h2 id="dlg-title">Connect ' + h.providerName + '</h2>' +
@@ -740,7 +748,7 @@ function bind() {
     }
     if (act === 'cancel') { if (!ui.busyLogin) { ui.pending = null; renderModal(); } }
     else if (act === 'pick-sub') { ui.authMode = 'subscription'; ui.modalError = ''; renderModal(); }
-    else if (act === 'pick-key') { ui.authMode = 'key'; ui.modalError = ''; renderModal(); }
+    else if (act === 'pick-key') { if (hOf(ui.pending.id).keyAllowed !== false) { ui.authMode = 'key'; ui.modalError = ''; renderModal(); } }
     else if (act === 'confirm') confirmModal();
     else if (act === 'open-url') { if (ui.loginUrl) api.openUrl(ui.loginUrl); }
     else if (act === 'recheck') {

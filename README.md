@@ -8,7 +8,7 @@ Each model runs in its own company's tool:
 |---|---|---|
 | Claude | Claude Code (`claude`) | Your Claude Code login, or an API key |
 | OpenAI | Codex (`codex`) | Sign in with ChatGPT, or an API key |
-| Gemini | Gemini CLI (`gemini`) | Your Gemini CLI Google login, or an API key |
+| Gemini | Antigravity CLI (`agy`) | Your Google sign-in in Antigravity CLI |
 
 ## Setup (macOS)
 
@@ -22,8 +22,10 @@ npm install -g @anthropic-ai/claude-code
 npm install -g @openai/codex
 ```
 ```
-npm install -g @google/gemini-cli
+curl -fsSL https://antigravity.google/cli/install.sh | bash
 ```
+
+Then run `agy` once and sign in with your Google account. (Google stopped Google sign-in for personal accounts in Gemini CLI in June 2026; Antigravity CLI replaces it. Gemini CLI still works with a paid API key: use `"harness": "gemini"` in `models.json`.)
 
 3. In this folder:
 
@@ -70,17 +72,17 @@ It has `# Role`, `# Rules` and `# Memory` sections. The app puts the file at the
 ### Permissions
 
 - A **Claude** model that leads a team is only allowed to run the sub-agent script. Nothing else is auto-approved.
-- A **Codex or Gemini** model that leads a team needs **Let leader run sub-agents** turned on. That runs Codex with `--sandbox danger-full-access` and Gemini with `--yolo`, so **they can run any command without asking**. Only turn it on with a project folder you're OK with them changing.
+- A **Codex, Antigravity or Gemini** model that leads a team needs **Let leader run sub-agents** turned on. That runs Codex with `--sandbox danger-full-access`, Antigravity with `--dangerously-skip-permissions` and Gemini CLI with `--yolo`, so **they can run any command without asking**. Only turn it on with a project folder you're OK with them changing.
 
 ## Models
 
 Edit `models.json`. Each entry has:
 
 - `id`: the name shown in the app
-- `harness`: `claude`, `codex` or `gemini`
+- `harness`: `claude`, `codex`, `antigravity` or `gemini`
 - `model`: the model name that tool expects
 
-To see which names a tool accepts, run it and use its model command (for example, `/model` in Codex). The Gemini entry is a placeholder.
+To see which names a tool accepts, run it and use its model command (for example, `/model` in Codex). For Antigravity, run `agy models` to list model names. An empty `model` uses Antigravity's default.
 
 ## Where things are saved
 
@@ -93,5 +95,5 @@ Chat history isn't saved yet. Role files and memory are saved in the project fol
 
 ## Notes
 
-- Using your own Claude Code or Gemini CLI login is meant for your own use on your own computer. To use it, run `claude` or `gemini` once in a terminal and log in.
+- Using your own Claude Code or Antigravity login is meant for your own use on your own computer. To use it, run `claude` or `agy` once in a terminal and sign in.
 - Using your own Claude Code login is meant for your own use on your own computer. Anthropic doesn't allow apps to offer Claude sign-in to other people, so if you share this app, Claude models should use API keys.
