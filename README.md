@@ -70,8 +70,6 @@ your-project/.sub-agents/roles/MODEL_ID.md
 
 It has `# Role`, `# Rules` and `# Memory` sections. The app puts the file at the top of every task the agent gets, whether from you or from the agent it reports to. When the agent ends a reply with lines like `REMEMBER: the user prefers TypeScript`, the app adds them under `# Memory`, so the agent sees them next time. You can edit or delete anything in the file, in the app or in any text editor.
 
-Antigravity CLI (`agy -p`) can hang when it isn't attached to a terminal, so the app runs it through the system's `script` command to give it one.
-
 ### Permissions
 
 - A **Claude** model that leads a team is only allowed to run the sub-agent script. Nothing else is auto-approved.

@@ -37,9 +37,9 @@ const HARNESSES = {
   antigravity: {
     name: 'Antigravity CLI',
     bin: 'agy',
-    // agy -p can hang or print nothing when it isn't attached to a terminal,
-    // so it runs inside a pseudo-terminal (see spawnTool).
-    needsTty: true,
+    // Some reports say agy -p hangs without a terminal. On macOS it works fine piped,
+    // and `script` can't start from a GUI app, so this stays off. See spawnTool.
+    needsTty: false,
     install: 'curl -fsSL https://antigravity.google/cli/install.sh | bash',
     keyEnv: [],
     clearEnv: ['GEMINI_API_KEY', 'GOOGLE_API_KEY'],
