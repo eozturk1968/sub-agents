@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('api', {
   openUrl: (u) => ipcRenderer.invoke('open:url', u),
   send: (opts) => ipcRenderer.invoke('chat:send', opts),
   stop: (runId) => ipcRenderer.invoke('chat:stop', runId),
+  archiveAgent: (cwd, name, chatMarkdown) => ipcRenderer.invoke('agent:archive', cwd, name, chatMarkdown),
   readRole: (cwd, id) => ipcRenderer.invoke('role:read', cwd, id),
   writeRole: (cwd, id, text) => ipcRenderer.invoke('role:write', cwd, id, text),
   renameRole: (cwd, from, to) => ipcRenderer.invoke('role:rename', cwd, from, to),

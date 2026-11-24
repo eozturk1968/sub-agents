@@ -161,7 +161,9 @@ function startBridge() {
       if (r.ok && m.harness === 'codex') res.write(r.text || '');
       res.end(r.ok ? '\n[sub-agent finished]\n' : '\n[sub-agent failed: ' + r.error + ']\n');
       let remembered = [];
-      if (r.ok) { try { remembered = roles.remember(state.cwd, name, r.text); } catch (e) { /* folder not writable */ } }
+      // Skip memory if the agent was removed from the canvas while it worked.
+      const still = (readJson(file('state.json'), {}).nodes || []).some((n) => (n.name || n.modelId) === name);
+      if (r.ok && still) { try { remembered = roles.remember(state.cwd, name, r.text); } catch (e) { /* folder not writable */ } }
       send('sub:end', { callId, agent: name, ok: r.ok, text: r.text, error: r.error, remembered });
     });
   });
@@ -312,6 +314,10 @@ ipcMain.handle('images:save', (_e, cwd, files) => {
 ipcMain.handle('role:read', (_e, cwd, id) => roles.readRole(cwd, id));
 ipcMain.handle('role:write', (_e, cwd, id, text) => roles.writeRole(cwd, id, text));
 ipcMain.handle('role:rename', (_e, cwd, from, to) => { try { return roles.renameRole(cwd, from, to); } catch (e) { return false; } });
+ipcMain.handle('agent:archive', (_e, cwd, name, chatMarkdown) => {
+  try { return { ok: true, files: roles.archiveAgent(cwd, name, chatMarkdown) }; }
+  catch (e) { return { ok: false, files: [], error: e.message }; }
+});
 ipcMain.handle('role:prompt', (_e, cwd, id) => roles.rolePrompt(cwd, id));
 ipcMain.handle('role:remember', (_e, cwd, id, reply) => { try { return roles.remember(cwd, id, reply); } catch (e) { return []; } });
 ipcMain.handle('role:open', (_e, cwd, id) => {

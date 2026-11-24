@@ -99,6 +99,15 @@ your-project/.sub-agents/roles/AGENT_NAME.md
 
 It has `# Role`, `# Rules` and `# Memory` sections. The app puts the file at the top of every task the agent gets, whether from you or from the agent it reports to. When the agent ends a reply with lines like `REMEMBER: the user prefers TypeScript`, the app adds them under `# Memory`, so the agent sees them next time. You can edit or delete anything in the file, in the app or in any text editor.
 
+**Removing an agent** (the × on its box, or **Clear canvas**) wipes it completely: its chat, memory and role file are gone from the app, so adding an agent with the same name starts blank. Nothing is lost, though. First the app moves its role file and saves its chat to:
+
+```
+your-project/.sub-agents/removed/AGENT_NAME-YYYY-MM-DD-HHMM.md
+your-project/.sub-agents/removed/AGENT_NAME-YYYY-MM-DD-HHMM-chat.md
+```
+
+You can open them in the Files tab and copy anything back into a new agent's role. With no project folder picked, they go to `~/.sub-agents/removed` instead. Opening a team doesn't count as removing: role files stay.
+
 ### Permissions
 
 - A **Claude** model that leads a team is only allowed to run the sub-agent script. Nothing else is auto-approved. To allow more (for example `Bash(python3:*)`, `Read`, `WebSearch`), click the gear button and add them under **Extra permissions for Claude leaders**, one per line.
@@ -121,7 +130,7 @@ In the app's user data folder (`~/Library/Application Support/sub-agents` on mac
 - `state.json`: the canvas, the team layout and which models are connected
 - `keys.bin`: API keys, encrypted with the system keychain when available
 
-Chat history isn't saved yet. Role files and memory are saved in the project folder.
+Chat history isn't kept between app launches (a removed agent's chat is saved to `.sub-agents/removed`). Role files and memory are saved in the project folder.
 
 ## Notes
 

@@ -629,7 +629,8 @@ async function send(id) {
     fullAccess: !!(canRun && m.harness !== 'claude')
   });
 
-  delete ui.runs[id];
+  if (ui.runs[id] === runId) delete ui.runs[id];
+  if (chats[id] !== list) return; // removed from the canvas while it worked
   if (r.ok) {
     reply.text = r.text || reply.text || '(no output)';
     addMemoryNote(id, await api.remember(S.cwd, id, reply.text));
@@ -659,7 +660,7 @@ api.onSubStart(({ callId, agent, task, from }) => {
   chats[agent].push({ role: 'task', text: task, from: from || 'the leader' });
   const msg = { role: 'assistant', text: '' };
   chats[agent].push(msg);
-  subCalls[callId] = { agent, msg, from: from || 'leader' };
+  subCalls[callId] = { agent, msg, from: from || 'leader', list: chats[agent] };
   ui.runs[agent] = callId;
   renderNodes();
   if (isOpen(agent)) renderChat(agent); else notify(agent);
@@ -674,6 +675,7 @@ api.onSubEnd(({ callId, agent, ok, text, error, remembered }) => {
   const c = subCalls[callId];
   delete subCalls[callId];
   if (ui.runs[agent] === callId) delete ui.runs[agent];
+  if (!c || chats[agent] !== c.list) return; // removed from the canvas while it worked
   if (c) {
     if (ok) { c.msg.text = text || c.msg.text || '(no output)'; addMemoryNote(agent, remembered); }
     else { if (!c.msg.text) chats[agent].splice(chats[agent].indexOf(c.msg), 1); chats[agent].push({ role: 'error', text: error || 'Failed.' }); }
@@ -860,9 +862,8 @@ function bind() {
       renderNodes();
       renderAllChats();
     } else if (b.dataset.act === 'remove') {
-      // Its sub-agents move up to its own boss. Its chat closes.
-      closeChat(n.name);
-      delete chats[n.name]; delete lastCall[n.name]; delete ui.drafts[n.name]; delete ui.attach[n.name];
+      // Its sub-agents move up to its own boss. Its role file and chat are
+      // saved to .sub-agents/removed, then the agent is wiped.
       const up = n.parent;
       S.nodes = S.nodes.filter((o) => o.key !== key);
       if (S.leader === key) {
@@ -873,6 +874,7 @@ function bind() {
       save();
       renderNodes();
       renderAllChats();
+      archiveAgents([n]).then(removedNotice);
     }
   });
   // Rename an agent: double-click its name (or press Enter on it).
@@ -974,13 +976,62 @@ function bind() {
     save();
     renderAllChats();
   });
-  $('#clear').addEventListener('click', () => {
+  $('#clear').addEventListener('click', async () => {
+    const gone = S.nodes.slice();
     S.nodes = [];
     S.leader = null;
     save();
     renderNodes();
     renderAllChats();
+    if (gone.length) removedNotice(await archiveAgents(gone));
   });
+}
+
+// ---------- Removing agents ----------
+// The chat as a readable Markdown file.
+function chatMarkdown(name) {
+  const list = (chats[name] || []).filter((x) => x.text || (x.images && x.images.length));
+  if (!list.length) return '';
+  const who = (x) => (x.role === 'user' ? 'You' : x.role === 'task' ? 'Task from ' + (x.from || 'the leader')
+    : x.role === 'note' ? 'Saved to memory' : x.role === 'error' ? 'Error' : name);
+  const out = ['# Chat with ' + name, '', 'Removed from the canvas on ' + new Date().toLocaleString() + '.', ''];
+  list.forEach((x) => {
+    out.push('**' + who(x) + '**:', '');
+    if (x.text) out.push(x.text, '');
+    if (x.images && x.images.length) out.push('Images: ' + x.images.map((im) => im.path || im.name).join(', '), '');
+  });
+  return out.join('\n');
+}
+
+// Save each removed agent's role file and chat, then forget everything about it.
+async function archiveAgents(nodes) {
+  const results = [];
+  for (const n of nodes) {
+    const name = n.name;
+    if (ui.runs[name]) { try { api.stop(ui.runs[name]); } catch (e) { /* ignore */ } delete ui.runs[name]; }
+    const md = chatMarkdown(name);
+    closeChat(name);
+    delete chats[name]; delete lastCall[name]; delete ui.drafts[name]; delete ui.attach[name];
+    if (ui.renaming === name) ui.renaming = null;
+    let r;
+    try { r = await api.archiveAgent(S.cwd, name, md); } catch (e) { r = { ok: false, files: [], error: e.message }; }
+    results.push({ name, ...r });
+  }
+  renderNodes();
+  renderAllChats();
+  if (S.cwd) refreshFiles();
+  return results;
+}
+
+function removedNotice(results) {
+  if (!results.length) return;
+  const failed = results.filter((r) => !r.ok);
+  const names = results.map((r) => r.name);
+  const label = names.length === 1 ? names[0] : names.length + ' agents';
+  if (failed.length) { notice('Removed ' + label + ', but could not save ' + failed.map((r) => r.name).join(', ') + ': ' + failed[0].error, 'bad'); return; }
+  const saved = results.some((r) => r.files.length);
+  const where = S.cwd ? '.sub-agents/removed' : '~/.sub-agents/removed';
+  notice('Removed ' + label + '.' + (saved ? ' Saved to ' + where + '.' : ''), 'ok');
 }
 
 // ---------- Start ----------
