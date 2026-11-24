@@ -37,7 +37,8 @@ npm start
 ## Using it
 
 - **Add a model:** drag it from the list onto the canvas, or click it. The first time, it asks how to sign in.
-- **Chat:** the chat button on a box opens that model's chat window in the bottom-left corner. It can be minimized, made bigger, or resized from its corner. The trash icon clears the chat.
+- **Chat:** the chat button on a box opens that model's chat window. Chats work like Messenger: each one gets its own window along the bottom, up to 3 at a time. Opening a 4th shrinks the oldest into a round bubble on the left; click a bubble to open it again. A blue dot means a new message, orange means it's working. Each window can be minimized, made bigger, resized from its corner, or cleared.
+- **Role and memory:** the document button on a box (or in its chat window) opens that agent's role file. See below.
 - **Build a team:** each box has a **Reports to** menu. You can also drop a model from the list onto a box to make it that box's sub-agent. **Make leader** changes the top of the team.
 - **Folder:** sets the project folder the agents work in. The default is your home folder.
 
@@ -55,6 +56,16 @@ That script asks the running app to run the sub-agent's own CLI. Because the app
 - the sub-agent's chat shows the exact task it got and its answer
 
 If a model claims a sub-agent answered but nothing shows up on that sub-agent's box, the call didn't really happen.
+
+### Role files and memory
+
+Each agent has a Markdown role file in the project folder you pick with **Folder**:
+
+```
+your-project/.sub-agents/roles/MODEL_ID.md
+```
+
+It has `# Role`, `# Rules` and `# Memory` sections. The app puts the file at the top of every task the agent gets, whether from you or from the agent it reports to. When the agent ends a reply with lines like `REMEMBER: the user prefers TypeScript`, the app adds them under `# Memory`, so the agent sees them next time. You can edit or delete anything in the file, in the app or in any text editor.
 
 ### Permissions
 
@@ -78,7 +89,7 @@ In the app's user data folder (`~/Library/Application Support/sub-agents` on mac
 - `state.json`: the canvas, the team layout and which models are connected
 - `keys.bin`: API keys, encrypted with the system keychain when available
 
-Chat history isn't saved yet.
+Chat history isn't saved yet. Role files and memory are saved in the project folder.
 
 ## Notes
 

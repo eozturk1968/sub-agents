@@ -32,6 +32,7 @@ const ICON = {
   min: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg>',
   expand: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>',
   trash: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
+  role: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>',
   send: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>'
 };
 
@@ -45,7 +46,8 @@ let keyStatus = {};        // provider -> true
 const installed = {};      // harness -> bool
 const ui = {
   query: '', pending: null, authMode: 'key', keyInput: '', busyLogin: false, loginUrl: null,
-  modalError: '', chat: null, chatSize: 'small', drag: null, runs: {}, draft: ''
+  modalError: '', drag: null, runs: {},
+  open: [], bubbles: [], unread: new Set(), drafts: {}, roleEdit: null
 };
 
 const $ = (s) => document.querySelector(s);
@@ -152,6 +154,7 @@ function renderNodes() {
       '<div class="node-top"><span class="badge' + (lead ? ' lead' : '') + '">' + role + '</span>' +
       (ui.runs[n.modelId] ? '<span class="busy">working…</span>' : '') + '<span class="grow"></span>' +
       '<button type="button" class="icon-btn boxed" data-act="chat" aria-label="Open chat with ' + esc(m.id) + '">' + ICON.chat + '</button>' +
+      '<button type="button" class="icon-btn boxed" data-act="role" aria-label="Role and memory for ' + esc(m.id) + '" title="Role and memory">' + ICON.role + '</button>' +
       (lead ? '' : '<button type="button" class="btn xs" data-act="leader">Make leader</button>') +
       '<button type="button" class="icon-btn" data-act="remove" aria-label="Remove ' + esc(m.id) + '">' + ICON.x + '</button></div>' +
       '<div class="row">' + avatar(h, 32) + '<div class="col grow"><span class="mono name">' + esc(m.id) + '</span>' +
@@ -240,6 +243,7 @@ function openModal(id, opts) {
 
 function renderModal() {
   const el = $('#modal');
+  if (ui.roleEdit) { renderRoleEditor(); return; }
   const p = ui.pending;
   if (!p) { el.innerHTML = ''; return; }
   const m = model(p.id);
@@ -318,12 +322,85 @@ async function confirmModal() {
   openChat(p.id);
 }
 
-// ---------- Chat window ----------
+// ---------- Chat windows (Messenger style) ----------
+// ui.open: chats shown as windows along the bottom, oldest first.
+// ui.bubbles: chats shrunk to round bubbles on the left.
+const MAX_OPEN = 3;
+const isOpen = (id) => ui.open.some((w) => w.id === id);
+const winEl = (id) => [...document.querySelectorAll('#dock .chat')].find((el) => el.dataset.id === id) || null;
+
 function openChat(id) {
-  ui.chat = id;
-  if (ui.chatSize === 'min') ui.chatSize = 'small';
+  if (!model(id)) return;
   if (!chats[id]) chats[id] = [];
-  renderChat();
+  ui.bubbles = ui.bubbles.filter((b) => b !== id);
+  ui.unread.delete(id);
+  if (!isOpen(id)) {
+    ui.open.push({ id, size: 'small' });
+    while (ui.open.length > MAX_OPEN) ui.bubbles.unshift(ui.open.shift().id);
+  }
+  syncDock();
+  const el = winEl(id);
+  const d = el && el.querySelector('textarea');
+  if (d) d.focus();
+}
+function shrinkChat(id) {
+  ui.open = ui.open.filter((w) => w.id !== id);
+  if (!ui.bubbles.includes(id)) ui.bubbles.unshift(id);
+  syncDock();
+}
+function closeChat(id) {
+  ui.open = ui.open.filter((w) => w.id !== id);
+  ui.bubbles = ui.bubbles.filter((b) => b !== id);
+  ui.unread.delete(id);
+  syncDock();
+}
+// A message arrived for a chat that isn't open: show it as a bubble with a dot.
+function notify(id) {
+  if (isOpen(id)) return;
+  ui.unread.add(id);
+  if (!ui.bubbles.includes(id)) ui.bubbles.unshift(id);
+  renderBubbles();
+}
+
+function syncDock() {
+  const dock = $('#dock');
+  ui.open = ui.open.filter((w) => model(w.id));
+  const want = ui.open.map((w) => w.id);
+  [...dock.querySelectorAll('.chat')].forEach((el) => { if (!want.includes(el.dataset.id)) el.remove(); });
+  const current = [...dock.querySelectorAll('.chat')].map((el) => el.dataset.id);
+  want.forEach((id) => {
+    if (!winEl(id)) {
+      const el = document.createElement('section');
+      el.className = 'chat';
+      el.dataset.id = id;
+      el.setAttribute('aria-label', 'Chat with ' + id);
+      dock.appendChild(el);
+      renderChat(id);
+    }
+  });
+  if (current.join('|') !== want.filter((id) => current.includes(id)).join('|')) {
+    want.forEach((id) => dock.appendChild(winEl(id)));
+  }
+  renderBubbles();
+}
+
+function renderBubbles() {
+  ui.bubbles = ui.bubbles.filter((id) => model(id));
+  $('#bubbles').innerHTML = ui.bubbles.map((id) => {
+    const h = hOf(id);
+    const dot = ui.runs[id] ? '<span class="bubble-dot busy" aria-hidden="true"></span>'
+      : ui.unread.has(id) ? '<span class="bubble-dot" aria-hidden="true"></span>' : '';
+    return '<div class="bubble-wrap">' +
+      '<button type="button" class="bubble" data-open="' + esc(id) + '" title="' + esc(id) + '" aria-label="Open chat with ' + esc(id) + (ui.unread.has(id) ? ' (new message)' : '') + '" style="background:' + h.bg + ';color:' + h.fg + '">' + h.letter + dot + '</button>' +
+      '<span class="bubble-name">' + esc(shortName(id)) + '</span>' +
+      '<button type="button" class="bubble-close" data-close="' + esc(id) + '" aria-label="Close chat with ' + esc(id) + '">' + ICON.x + '</button>' +
+      '</div>';
+  }).join('');
+}
+
+function renderAllChats() {
+  ui.open.forEach((w) => renderChat(w.id));
+  renderBubbles();
 }
 
 function leaderInfo(id) {
@@ -334,58 +411,56 @@ function leaderInfo(id) {
   return { isLead, subs, canRun, isRoot: !!node && node.key === S.leader };
 }
 
-function renderChat() {
-  const el = $('#chat');
-  const id = ui.chat;
-  if (!id || !model(id)) { el.hidden = true; el.innerHTML = ''; return; }
+function renderChat(id) {
+  const el = winEl(id);
+  if (!el) return;
+  const w = ui.open.find((x) => x.id === id);
   const m = model(id);
   const h = HARNESS[m.harness];
   const { isLead, subs, canRun } = leaderInfo(id);
   const busy = !!ui.runs[id];
-  el.hidden = false;
-  el.className = 'chat ' + ui.chatSize;
+  el.className = 'chat ' + (w ? w.size : 'small');
 
   let html = '<header class="chat-head">' + avatar(h, 26) +
-    '<div class="col grow"><strong style="font-size:13px">' + h.name + '</strong><span class="mono tiny">' + esc(id) + ' · ' + methodLabel(id) + '</span></div>' +
+    '<div class="col grow"><strong style="font-size:13px">' + esc(shortName(id)) + '</strong><span class="tiny">' + h.name + ' · ' + methodLabel(id) + '</span></div>' +
+    '<button type="button" class="icon-btn light" data-c="role" aria-label="Edit role" title="Role and memory">' + ICON.role + '</button>' +
     '<button type="button" class="icon-btn light" data-c="clear" aria-label="Clear chat" title="Clear chat">' + ICON.trash + '</button>' +
-    '<button type="button" class="icon-btn light" data-c="min" aria-label="' + (ui.chatSize === 'min' ? 'Restore' : 'Minimize') + '">' + ICON.min + '</button>' +
-    '<button type="button" class="icon-btn light" data-c="size" aria-label="' + (ui.chatSize === 'large' ? 'Make smaller' : 'Make bigger') + '">' + ICON.expand + '</button>' +
+    '<button type="button" class="icon-btn light" data-c="min" aria-label="Minimize" title="Minimize">' + ICON.min + '</button>' +
+    '<button type="button" class="icon-btn light" data-c="size" aria-label="' + (w && w.size === 'large' ? 'Make smaller' : 'Make bigger') + '">' + ICON.expand + '</button>' +
     '<button type="button" class="icon-btn light" data-c="close" aria-label="Close chat">' + ICON.x + '</button></header>';
-
-  if (ui.chatSize !== 'min') {
-    if (isLead && subs.length) {
-      html += '<div class="leader-bar">' + (canRun
-        ? 'Leads a team. It can hand tasks to: '
-        : 'Leads a team. Turn on "Let leader run sub-agents" so ' + h.name + ' can call: ') +
-        subs.map((s) => esc(s.modelId)).join(', ') + '</div>';
-    }
-    html += '<div class="messages" id="messages"></div>' +
-      '<form class="composer" id="composer"><label for="draft" class="sr">Message</label>' +
-      '<textarea id="draft" rows="1" placeholder="Message ' + esc(shortName(id)) + ' (Enter to send, Shift+Enter for a new line)"></textarea>' +
-      (busy ? '<button type="button" class="btn" data-c="stop" style="height:44px">Stop</button>'
-        : '<button type="submit" class="send" aria-label="Send">' + ICON.send + '</button>') +
-      '</form>';
+  if (isLead && subs.length) {
+    html += '<div class="leader-bar">' + (canRun
+      ? 'Leads a team. It can hand tasks to: '
+      : 'Leads a team. Turn on "Let leader run sub-agents" so ' + h.name + ' can call: ') +
+      subs.map((s) => esc(s.modelId)).join(', ') + '</div>';
   }
+  html += '<div class="messages"></div>' +
+    '<form class="composer"><label class="sr" for="draft-' + esc(id) + '">Message</label>' +
+    '<textarea id="draft-' + esc(id) + '" rows="1" placeholder="Message ' + esc(shortName(id)) + '"></textarea>' +
+    (busy ? '<button type="button" class="btn" data-c="stop" style="height:44px">Stop</button>'
+      : '<button type="submit" class="send" aria-label="Send">' + ICON.send + '</button>') +
+    '</form>';
   el.innerHTML = html;
-  renderMessages();
+  renderMessages(id);
 
-  const d = $('#draft');
-  if (d) {
-    d.value = ui.draft;
-    d.addEventListener('input', (e) => { ui.draft = e.target.value; });
-    d.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
-  }
-  const f = $('#composer');
-  if (f) f.addEventListener('submit', (e) => { e.preventDefault(); send(); });
+  const d = el.querySelector('textarea');
+  d.value = ui.drafts[id] || '';
+  d.addEventListener('input', (e) => { ui.drafts[id] = e.target.value; });
+  d.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(id); } });
+  el.querySelector('form').addEventListener('submit', (e) => { e.preventDefault(); send(id); });
 }
 
-function renderMessages() {
-  const box = $('#messages');
+function renderMessages(id) {
+  const el = winEl(id);
+  const box = el && el.querySelector('.messages');
   if (!box) return;
-  const list = chats[ui.chat] || [];
+  const list = chats[id] || [];
   box.innerHTML = list.length
-    ? list.map((x) => '<div class="msg ' + x.role + '">' + (x.role === 'task' ? '<span class="msg-label">Task from ' + esc(x.from || 'the leader') + '</span>' : '') + esc(x.text || (x.role === 'assistant' ? '…' : '')) + '</div>').join('')
-    : '<p class="muted small center">Connected. Messages go to ' + esc(hOf(ui.chat).name) + ', working in ' + esc(S.cwd || 'your home folder') + '.</p>';
+    ? list.map((x) => '<div class="msg ' + x.role + '">' +
+        (x.role === 'task' ? '<span class="msg-label">Task from ' + esc(x.from || 'the leader') + '</span>' : '') +
+        (x.role === 'note' ? '<span class="msg-label">Saved to memory</span>' : '') +
+        esc(x.text || (x.role === 'assistant' ? '…' : '')) + '</div>').join('')
+    : '<p class="muted small center">Messages go to ' + esc(hOf(id).name) + ', working in ' + esc(S.cwd || 'your home folder') + '.</p>';
   box.scrollTop = box.scrollHeight;
 }
 
@@ -403,33 +478,36 @@ function leaderBrief(subs) {
   ].join('\n');
 }
 
-async function send() {
-  const id = ui.chat;
-  const text = ui.draft.trim();
+function addMemoryNote(id, lines) {
+  if (!lines || !lines.length) return;
+  chats[id].push({ role: 'note', text: lines.join('\n') });
+}
+
+async function send(id) {
+  const text = (ui.drafts[id] || '').trim();
   if (!id || !text || ui.runs[id]) return;
   const m = model(id);
   const list = chats[id];
-  const history = list.filter((x) => x.role !== 'error').slice(-10);
+  const history = list.filter((x) => x.role === 'user' || x.role === 'assistant' || x.role === 'task').slice(-10);
   const { subs, canRun } = leaderInfo(id);
 
-  let prompt = '';
+  let prompt = (await api.rolePrompt(S.cwd, id)) + '\n\n';
   if (canRun) prompt += leaderBrief(subs) + '\n\n';
   if (history.length) {
-    prompt += 'Conversation so far:\n' + history.map((x) => (x.role === 'user' ? 'User: ' : x.role === 'task' ? 'Group leader: ' : 'Assistant: ') + x.text).join('\n') + '\n\n';
+    prompt += 'Conversation so far:\n' + history.map((x) => (x.role === 'user' ? 'User: ' : x.role === 'task' ? 'Agent you report to: ' : 'Assistant: ') + x.text).join('\n') + '\n\n';
   }
-  prompt += (history.length || canRun) ? 'User: ' + text : text;
+  prompt += 'User: ' + text;
 
-  // Only pass keys for models in this run that use an API key.
-  // Sub-agent keys are handled by the app itself when the leader calls them.
+  // Only pass the key for this model if it uses one. Sub-agent keys are handled by the app when the leader calls them.
   const providers = S.methods[id] === 'key' ? [hOf(id).provider] : [];
 
   list.push({ role: 'user', text });
   const reply = { role: 'assistant', text: '' };
   list.push(reply);
-  ui.draft = '';
+  ui.drafts[id] = '';
   const runId = Date.now() + '-' + Math.random().toString(36).slice(2);
   ui.runs[id] = runId;
-  renderChat();
+  renderChat(id);
   renderNodes();
 
   const r = await api.send({
@@ -446,12 +524,14 @@ async function send() {
   delete ui.runs[id];
   if (r.ok) {
     reply.text = r.text || reply.text || '(no output)';
+    addMemoryNote(id, await api.remember(S.cwd, id, reply.text));
   } else {
     if (!reply.text) list.pop();
     list.push({ role: 'error', text: r.error || 'Something went wrong.' });
   }
-  if (ui.chat === id) renderChat();
+  if (isOpen(id)) renderChat(id); else notify(id);
   renderNodes();
+  renderBubbles();
 }
 
 api.onChunk(({ runId, text }) => {
@@ -460,11 +540,11 @@ api.onChunk(({ runId, text }) => {
   const list = chats[id];
   const last = list[list.length - 1];
   if (last && last.role === 'assistant') last.text += text;
-  if (ui.chat === id) renderMessages();
+  renderMessages(id);
 });
 
 // ---------- Sub-agent calls made by the leader ----------
-const subCalls = {}; // callId -> { modelId, msg }
+const subCalls = {}; // callId -> { modelId, msg, from }
 function nowTime() { return new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
 api.onSubStart(({ callId, modelId, task, from }) => {
   if (!chats[modelId]) chats[modelId] = [];
@@ -474,26 +554,54 @@ api.onSubStart(({ callId, modelId, task, from }) => {
   subCalls[callId] = { modelId, msg, from: from || 'leader' };
   ui.runs[modelId] = callId;
   renderNodes();
-  if (ui.chat === modelId) renderChat();
+  if (isOpen(modelId)) renderChat(modelId); else notify(modelId);
 });
 api.onSubChunk(({ callId, text }) => {
   const c = subCalls[callId];
   if (!c) return;
   c.msg.text += text;
-  if (ui.chat === c.modelId) renderMessages();
+  renderMessages(c.modelId);
 });
-api.onSubEnd(({ callId, modelId, ok, text, error }) => {
+api.onSubEnd(({ callId, modelId, ok, text, error, remembered }) => {
   const c = subCalls[callId];
   delete subCalls[callId];
   if (ui.runs[modelId] === callId) delete ui.runs[modelId];
   if (c) {
-    if (ok) c.msg.text = text || c.msg.text || '(no output)';
+    if (ok) { c.msg.text = text || c.msg.text || '(no output)'; addMemoryNote(modelId, remembered); }
     else { if (!c.msg.text) chats[modelId].splice(chats[modelId].indexOf(c.msg), 1); chats[modelId].push({ role: 'error', text: error || 'Failed.' }); }
   }
   lastCall[modelId] = { time: nowTime(), ok, from: c ? shortName(c.from) : 'leader' };
   renderNodes();
-  if (ui.chat === modelId) renderChat();
+  if (isOpen(modelId)) renderChat(modelId); else notify(modelId);
 });
+
+// ---------- Role editor ----------
+async function openRoleEditor(id) {
+  const r = await api.readRole(S.cwd, id);
+  ui.roleEdit = { id, path: r.path, text: r.text, exists: r.exists, saved: false };
+  renderModal();
+}
+
+function renderRoleEditor() {
+  const e = ui.roleEdit;
+  const h = hOf(e.id);
+  $('#modal').innerHTML = '<div class="overlay"><div class="dialog wide" role="dialog" aria-modal="true" aria-labelledby="role-title">' +
+    '<div class="row top">' + avatar(h, 40) + '<div class="col grow gap4"><h2 id="role-title">Role and memory: ' + esc(shortName(e.id)) + '</h2>' +
+    '<p class="muted small">Read before every task. Lines the agent writes as <span class="mono">REMEMBER:</span> are added under <span class="mono"># Memory</span>.</p></div>' +
+    '<button type="button" class="icon-btn" data-m="role-cancel" aria-label="Close">' + ICON.x + '</button></div>' +
+    '<label class="sr" for="role-text">Role file</label>' +
+    '<textarea id="role-text" class="role-text mono" spellcheck="false"></textarea>' +
+    '<p class="muted small">Saved in <span class="mono">' + esc(e.path) + '</span>' + (e.exists ? '' : ' (not created yet)') + '. Change the project with <strong>Folder</strong>.</p>' +
+    (e.saved ? '<p class="small" style="color:#15803D">Saved.</p>' : '') +
+    '<div class="actions"><button type="button" class="btn" data-m="role-open">Open in text editor</button><span class="grow"></span>' +
+    '<button type="button" class="btn" data-m="role-cancel">Close</button>' +
+    '<button type="button" class="btn primary" data-m="role-save">Save</button></div>' +
+    '</div></div>';
+  const t = $('#role-text');
+  t.value = e.text;
+  t.addEventListener('input', (ev) => { e.text = ev.target.value; e.saved = false; });
+  t.focus();
+}
 
 api.onLoginUrl((url) => {
   ui.loginUrl = url;
@@ -521,7 +629,7 @@ function bind() {
     if (!b) return;
     const id = b.dataset.disconnect;
     delete S.methods[id];
-    if (ui.chat === id) { ui.chat = null; renderChat(); }
+    closeChat(id);
     save();
     renderConnected();
     renderNodes();
@@ -578,6 +686,7 @@ function bind() {
     const key = Number(b.closest('.node').dataset.key);
     const n = S.nodes.find((o) => o.key === key);
     if (!n) return;
+    if (b.dataset.act === 'role') { openRoleEditor(n.modelId); return; }
     if (b.dataset.act === 'chat') {
       if (isReady(n.modelId)) openChat(n.modelId);
       else openModal(n.modelId, { noAdd: true });
@@ -589,7 +698,7 @@ function bind() {
       fixTree();
       save();
       renderNodes();
-      renderChat();
+      renderAllChats();
     } else if (b.dataset.act === 'remove') {
       // Its sub-agents move up to its own boss.
       const up = n.parent;
@@ -601,7 +710,7 @@ function bind() {
       fixTree();
       save();
       renderNodes();
-      renderChat();
+      renderAllChats();
     }
   });
   nodesEl.addEventListener('change', (e) => {
@@ -614,13 +723,19 @@ function bind() {
     placeUnder(n);
     save();
     renderNodes();
-    renderChat();
+    renderAllChats();
   });
 
   $('#modal').addEventListener('click', async (e) => {
     const b = e.target.closest('[data-m]');
     if (!b) return;
     const act = b.dataset.m;
+    if (act === 'role-cancel') { ui.roleEdit = null; renderModal(); return; }
+    if (act === 'role-open') { api.openRole(S.cwd, ui.roleEdit.id); return; }
+    if (act === 'role-save') {
+      await api.writeRole(S.cwd, ui.roleEdit.id, ui.roleEdit.text);
+      ui.roleEdit.exists = true; ui.roleEdit.saved = true; renderModal(); return;
+    }
     if (act === 'cancel') { if (!ui.busyLogin) { ui.pending = null; renderModal(); } }
     else if (act === 'pick-sub') { ui.authMode = 'subscription'; ui.modalError = ''; renderModal(); }
     else if (act === 'pick-key') { ui.authMode = 'key'; ui.modalError = ''; renderModal(); }
@@ -634,36 +749,44 @@ function bind() {
     }
   });
 
-  $('#chat').addEventListener('click', (e) => {
+  $('#dock').addEventListener('click', (e) => {
+    const ob = e.target.closest('[data-open]');
+    if (ob) { openChat(ob.dataset.open); return; }
+    const cb = e.target.closest('[data-close]');
+    if (cb) { closeChat(cb.dataset.close); return; }
     const b = e.target.closest('[data-c]');
     if (!b) return;
+    const win = b.closest('.chat');
+    const id = win.dataset.id;
     const act = b.dataset.c;
-    if (act === 'close') { ui.chat = null; renderChat(); }
-    else if (act === 'clear') { if (!ui.runs[ui.chat]) { chats[ui.chat] = []; renderChat(); } }
-    else if (act === 'min') { ui.chatSize = ui.chatSize === 'min' ? 'small' : 'min'; renderChat(); }
-    else if (act === 'size') { ui.chatSize = ui.chatSize === 'large' ? 'small' : 'large'; renderChat(); }
-    else if (act === 'stop') { const r = ui.runs[ui.chat]; if (r) api.stop(r); }
-  });
-  // Clear inline size left by manual resizing when switching sizes.
-  $('#chat').addEventListener('click', (e) => {
-    if (e.target.closest('[data-c="min"],[data-c="size"]')) { $('#chat').style.width = ''; $('#chat').style.height = ''; }
+    if (act === 'close') closeChat(id);
+    else if (act === 'min') shrinkChat(id);
+    else if (act === 'size') {
+      const w = ui.open.find((x) => x.id === id);
+      w.size = w.size === 'large' ? 'small' : 'large';
+      win.style.width = ''; win.style.height = '';
+      renderChat(id);
+    }
+    else if (act === 'clear') { if (!ui.runs[id]) { chats[id] = []; renderChat(id); } }
+    else if (act === 'stop') { const r = ui.runs[id]; if (r) api.stop(r); }
+    else if (act === 'role') openRoleEditor(id);
   });
 
   $('#folder').addEventListener('click', async () => {
     const p = await api.pickFolder();
-    if (p) { S.cwd = p; save(); renderToolbar(); if (ui.chat) renderMessages(); }
+    if (p) { S.cwd = p; save(); renderToolbar(); renderAllChats(); }
   });
   $('#allow-run').addEventListener('change', (e) => {
     S.allowLeaderRun = e.target.checked;
     save();
-    renderChat();
+    renderAllChats();
   });
   $('#clear').addEventListener('click', () => {
     S.nodes = [];
     S.leader = null;
     save();
     renderNodes();
-    renderChat();
+    renderAllChats();
   });
 }
 
@@ -682,7 +805,7 @@ async function init() {
   renderList();
   renderConnected();
   renderNodes();
-  renderChat();
+  renderAllChats();
   await Promise.all(Object.keys(HARNESS).map(async (h) => { installed[h] = await api.checkHarness(h); }));
   renderList();
 }

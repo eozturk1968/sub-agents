@@ -4,6 +4,7 @@ const fs = require('fs');
 const http = require('http');
 const crypto = require('crypto');
 const harness = require('./harness');
+const roles = require('./roles');
 
 let win;
 
@@ -90,7 +91,9 @@ function startBridge() {
       const team = teamFor(state, list, m.id);
       // A sub-agent with its own sub-agents gets the same team instructions as the leader.
       const canRun = team.kids.length > 0 && (m.harness === 'claude' || !!state.allowLeaderRun);
-      const prompt = canRun ? teamBrief(team.kids) + '\n\nTask from the agent you report to:\n' + task : task;
+      const prompt = roles.rolePrompt(state.cwd, m.id) + '\n\n' +
+        (canRun ? teamBrief(team.kids) + '\n\n' : '') +
+        'Task from the agent you report to:\n' + task;
 
       const callId = crypto.randomUUID();
       res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
@@ -106,7 +109,9 @@ function startBridge() {
       );
       if (r.ok && m.harness === 'codex') res.write(r.text || '');
       res.end(r.ok ? '\n[sub-agent finished]\n' : '\n[sub-agent failed: ' + r.error + ']\n');
-      send('sub:end', { callId, modelId: m.id, ok: r.ok, text: r.text, error: r.error });
+      let remembered = [];
+      if (r.ok) { try { remembered = roles.remember(state.cwd, m.id, r.text); } catch (e) { /* folder not writable */ } }
+      send('sub:end', { callId, modelId: m.id, ok: r.ok, text: r.text, error: r.error, remembered });
     });
   });
   server.listen(0, '127.0.0.1', () => {
@@ -169,6 +174,15 @@ ipcMain.handle('chat:send', (_e, opts) => {
   return harness.run(opts, keys, (text) => win && win.webContents.send('chat:chunk', { runId: opts.runId, text }));
 });
 ipcMain.handle('bridge:script', () => SCRIPT);
+ipcMain.handle('role:read', (_e, cwd, id) => roles.readRole(cwd, id));
+ipcMain.handle('role:write', (_e, cwd, id, text) => roles.writeRole(cwd, id, text));
+ipcMain.handle('role:prompt', (_e, cwd, id) => roles.rolePrompt(cwd, id));
+ipcMain.handle('role:remember', (_e, cwd, id, reply) => { try { return roles.remember(cwd, id, reply); } catch (e) { return []; } });
+ipcMain.handle('role:open', (_e, cwd, id) => {
+  const r = roles.readRole(cwd, id);
+  if (!r.exists) roles.writeRole(cwd, id, r.text);
+  return shell.openPath(r.path);
+});
 ipcMain.handle('chat:stop', (_e, runId) => harness.stop(runId));
 
 app.whenReady().then(() => { startBridge(); createWindow(); });

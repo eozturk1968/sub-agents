@@ -1,0 +1,84 @@
+// Role files: one Markdown file per agent, kept in the project folder at
+//   PROJECT/.sub-agents/roles/MODEL.md
+// The file is put at the top of every task the agent gets, and lines the agent
+// writes as "REMEMBER: ..." are added to its "# Memory" section.
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+const TEMPLATE = (modelId) => [
+  '# Role',
+  'You are ' + modelId + ' on a team of AI agents. Describe this agent\'s job here.',
+  '',
+  '# Rules',
+  '- Keep answers clear and short.',
+  '',
+  '# Memory',
+  ''
+].join('\n');
+
+function roleDir(cwd) {
+  return path.join(cwd || os.homedir(), '.sub-agents', 'roles');
+}
+
+function rolePath(cwd, modelId) {
+  return path.join(roleDir(cwd), String(modelId).replace(/[^A-Za-z0-9._-]/g, '_') + '.md');
+}
+
+function readRole(cwd, modelId) {
+  const p = rolePath(cwd, modelId);
+  try { return { path: p, text: fs.readFileSync(p, 'utf8'), exists: true }; }
+  catch (e) { return { path: p, text: TEMPLATE(modelId), exists: false }; }
+}
+
+function writeRole(cwd, modelId, text) {
+  const p = rolePath(cwd, modelId);
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, String(text));
+  return p;
+}
+
+// Text that goes at the top of every task.
+function rolePrompt(cwd, modelId) {
+  const r = readRole(cwd, modelId);
+  const parts = [];
+  if (r.exists && r.text.trim()) {
+    parts.push('Your role file (' + r.path + '). Read it and follow it before working:\n---\n' + r.text.trim() + '\n---');
+  }
+  parts.push('If you learn something important for future tasks (a decision, a preference, a key fact about this project), ' +
+    'add it at the very end of your reply as a line starting with "REMEMBER: ". One short fact per line. Only add what really matters.');
+  return parts.join('\n\n');
+}
+
+function extractRemember(text) {
+  return String(text || '').split('\n')
+    .map((l) => l.trim())
+    .filter((l) => /^REMEMBER:/i.test(l))
+    .map((l) => l.replace(/^REMEMBER:\s*/i, '').trim())
+    .filter(Boolean);
+}
+
+// Add new memory lines under "# Memory" (creating the file or section if needed).
+function remember(cwd, modelId, replyText) {
+  const lines = extractRemember(replyText);
+  if (!lines.length) return [];
+  const r = readRole(cwd, modelId);
+  let text = r.text.replace(/\s+$/, '');
+  const existing = new Set(text.split('\n').map((l) => l.replace(/^-\s*/, '').trim()));
+  const fresh = lines.filter((l) => !existing.has(l));
+  if (!fresh.length) return [];
+  if (!/^# Memory\s*$/m.test(text)) text += '\n\n# Memory';
+  // Append at the end of the Memory section (before the next "# " heading, if any).
+  const idx = text.search(/^# Memory\s*$/m);
+  const after = text.slice(idx);
+  const next = after.slice(1).search(/^# /m);
+  const insertAt = next === -1 ? text.length : idx + 1 + next;
+  const block = fresh.map((l) => '- ' + l).join('\n');
+  const before = text.slice(0, insertAt).replace(/\s+$/, '');
+  const rest = text.slice(insertAt);
+  text = before + '\n' + block + (rest ? '\n\n' + rest : '') + '\n';
+  writeRole(cwd, modelId, text);
+  return fresh;
+}
+
+module.exports = { rolePath, readRole, writeRole, rolePrompt, remember, extractRemember };
