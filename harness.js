@@ -36,6 +36,8 @@ const HARNESSES = {
     bin: 'gemini',
     install: 'npm install -g @google/gemini-cli',
     keyEnv: ['GEMINI_API_KEY'],
+    // Also cleared when using the CLI's own Google login, so a stray key isn't billed.
+    clearEnv: ['GOOGLE_API_KEY'],
     provider: 'google',
     args(model, prompt, opts) {
       const a = ['-m', model];
@@ -63,6 +65,7 @@ function buildEnv(keys) {
     // No key for this provider means "use the tool's own login", so remove any
     // key the shell may have set, or the tool would silently bill that key.
     for (const name of h.keyEnv) { if (k) env[name] = k; else delete env[name]; }
+    if (!k) for (const name of h.clearEnv || []) delete env[name];
   }
   return env;
 }
@@ -122,27 +125,33 @@ function stop(runId) {
 }
 
 // Subscription sign-in. Only Codex supports it here ("Sign in with ChatGPT").
-// Claude: check that Claude Code is already logged in on this Mac by running a tiny prompt with no API key.
-function checkClaudeLogin() {
+// Claude Code / Gemini CLI: check the tool is already logged in on this computer
+// by running a tiny prompt with no API key.
+const LOGIN_HELP = {
+  claude: "Claude Code isn't logged in. Open Terminal, run: claude  then log in with your Claude account, quit it, and click the button again.",
+  gemini: "Gemini CLI isn't logged in. Open Terminal, run: gemini  then choose Login with Google, finish in your browser, quit it, and click the button again."
+};
+function checkCliLogin(harness) {
+  const h = HARNESSES[harness];
   return new Promise((resolve) => {
     let out = '';
     let child;
-    try { child = spawn('claude', ['-p', 'Reply with just: OK'], { env: buildEnv({}) }); } catch (e) { return resolve({ ok: false, error: e.message }); }
+    try { child = spawn(h.bin, ['-p', 'Reply with just: OK'], { env: buildEnv({}) }); } catch (e) { return resolve({ ok: false, error: e.message }); }
     child.stdin.end();
     const timer = setTimeout(() => child.kill(), 120000);
     child.stdout.on('data', (d) => { out += d; });
     child.stderr.on('data', (d) => { out += d; });
-    child.on('error', (e) => { clearTimeout(timer); resolve({ ok: false, error: e.code === 'ENOENT' ? "Claude Code isn't installed. Install it with: " + HARNESSES.claude.install : e.message }); });
+    child.on('error', (e) => { clearTimeout(timer); resolve({ ok: false, error: e.code === 'ENOENT' ? h.name + " isn't installed. Install it with: " + h.install : e.message }); });
     child.on('close', (code) => {
       clearTimeout(timer);
       if (code === 0) return resolve({ ok: true });
-      resolve({ ok: false, error: "Claude Code isn't logged in. Open Terminal, run: claude  then log in with your Claude account, quit it, and click the button again." + (out.trim() ? '\n\nDetails: ' + out.trim().slice(-300) : '') });
+      resolve({ ok: false, error: LOGIN_HELP[harness] + (out.trim() ? '\n\nDetails: ' + out.trim().slice(-300) : '') });
     });
   });
 }
 
 function login(harness, onUrl) {
-  if (harness === 'claude') return checkClaudeLogin();
+  if (harness === 'claude' || harness === 'gemini') return checkCliLogin(harness);
   if (harness !== 'codex') return Promise.resolve({ ok: false, error: 'Subscription sign-in is not available for this model.' });
   return new Promise((resolve) => {
     let log = '';

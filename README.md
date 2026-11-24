@@ -8,7 +8,7 @@ Each model runs in its own company's tool:
 |---|---|---|
 | Claude | Claude Code (`claude`) | Your Claude Code login, or an API key |
 | OpenAI | Codex (`codex`) | Sign in with ChatGPT, or an API key |
-| Gemini | Gemini CLI (`gemini`) | API key |
+| Gemini | Gemini CLI (`gemini`) | Your Gemini CLI Google login, or an API key |
 
 ## Setup (macOS)
 
@@ -93,4 +93,5 @@ Chat history isn't saved yet. Role files and memory are saved in the project fol
 
 ## Notes
 
+- Using your own Claude Code or Gemini CLI login is meant for your own use on your own computer. To use it, run `claude` or `gemini` once in a terminal and log in.
 - Using your own Claude Code login is meant for your own use on your own computer. Anthropic doesn't allow apps to offer Claude sign-in to other people, so if you share this app, Claude models should use API keys.

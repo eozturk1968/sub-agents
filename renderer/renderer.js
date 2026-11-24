@@ -17,7 +17,8 @@ const HARNESS = {
     install: 'npm install -g @openai/codex', tool: 'Bash(codex exec:*)', short: 'codex exec'
   },
   gemini: {
-    name: 'Gemini CLI', provider: 'google', providerName: 'Google', allowSub: false,
+    name: 'Gemini CLI', provider: 'google', providerName: 'Google', allowSub: true, subLabel: 'Use my Gemini CLI login',
+    subDesc: 'Uses the Google account you are logged into in Gemini CLI on this computer. For your own use only.',
     keyName: 'Gemini API key', ph: 'AIza...', letter: 'G', bg: '#DBE7FE', fg: '#1D4ED8',
     install: 'npm install -g @google/gemini-cli', tool: 'Bash(gemini:*)', short: 'gemini -p',
     note: 'Gemini CLI needs an API key when another app runs it in the background.'
@@ -276,7 +277,8 @@ function renderModal() {
   }
   if (ui.modalError) body += '<p class="error">' + esc(ui.modalError) + '</p>';
 
-  const label = ui.busyLogin ? (m.harness === 'claude' ? 'Checking your Claude Code login…' : 'Waiting for sign-in…') : (sub ? (m.harness === 'claude' ? 'Connect' : h.subLabel) : 'Save and connect');
+  const viaCli = m.harness === 'claude' || m.harness === 'gemini';
+  const label = ui.busyLogin ? (viaCli ? 'Checking your ' + h.name + ' login…' : 'Waiting for sign-in…') : (sub ? (viaCli ? 'Connect' : h.subLabel) : 'Save and connect');
   el.innerHTML = '<div class="overlay"><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-title">' +
     '<div class="row top">' + avatar(h, 40) + '<div class="col grow gap4"><h2 id="dlg-title">Connect ' + h.providerName + '</h2>' +
     '<p class="muted small">To use <span class="mono">' + esc(m.id) + '</span>. Runs in <strong>' + h.name + '</strong>.</p></div>' +
