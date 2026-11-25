@@ -173,7 +173,7 @@ In the app's user data folder (`~/Library/Application Support/sub-agents` on mac
 - `state.json`: the canvas, the team layout and which models are connected
 - `keys.bin`: API keys, encrypted with the system keychain when available
 
-Chat history isn't kept between app launches (a removed agent's chat is saved to `.sub-agents/removed`). Role files and memory are saved in the project folder.
+Chat history is saved automatically and comes back after you restart the app (the last 500 messages per agent). It's stored in `chats.json` in the app's data folder: `~/Library/Application Support/sub-agents` on a Mac, `%APPDATA%\sub-agents` on Windows. Removing an agent, Clear canvas or closing a tab clears that agent's saved chat; a removed agent's chat is first copied to `.sub-agents/removed`. Role files and memory are saved in the project folder.
 
 ## Notes
 

@@ -1,5 +1,5 @@
 'use strict';
-/* global api, S, ui, $, esc, model, shortName, cleanAgentName, currentTab, newTab, isBlankTab, uniqueAgentName, view, applyView, fitAll, fixTree, save, renderNodes, renderList, renderAllChats, renderToolbar, renderModal, refreshFiles, ICON */
+/* global api, S, ui, chats, $, esc, model, shortName, cleanAgentName, currentTab, newTab, isBlankTab, uniqueAgentName, view, applyView, fitAll, fixTree, save, renderNodes, renderList, renderAllChats, renderToolbar, renderModal, refreshFiles, ICON */
 // Save the canvas as a named team file, and open team files again.
 // Loaded before renderer.js; everything here runs after renderer.js has set up.
 
@@ -88,6 +88,8 @@ async function loadTeam(team) {
       x: Number(n.x) || 0, y: Number(n.y) || 0, parent: n.parent == null ? null : Number(n.parent)
     });
   });
+  // New agents start with an empty chat, even if an old saved chat used the same name.
+  S.nodes.forEach((n) => { if (!ui.runs[n.name]) delete chats[n.name]; });
   // Older team files keyed roles by model id; map them to agent names.
   const roleTexts = {};
   const src = team.roles || {};

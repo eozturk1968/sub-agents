@@ -345,3 +345,4 @@ p { margin: 0; }
 .tt-unread { background: #2563EB; }
 @keyframes tt-pulse { 50% { opacity: 0.3; } }
 .tt-rename input { width: 120px; height: 24px; padding: 0 6px; border: 1px solid #0D9488; border-radius: 5px; font: inherit; }
+.img-missing { display: inline-block; font-size: 11px; color: var(--muted, #6b7280); border: 1px dashed currentColor; border-radius: 6px; padding: 4px 8px; margin: 2px 4px 2px 0; }

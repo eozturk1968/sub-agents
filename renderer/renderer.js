@@ -564,7 +564,11 @@ function renderMessages(id) {
     ? list.map((x, i) => '<div class="msg ' + x.role + '">' +
         (x.role === 'task' ? '<span class="msg-label">Task from ' + esc(x.from || 'the leader') + '</span>' : '') +
         (x.role === 'note' ? '<span class="msg-label">Saved to memory</span>' : '') +
-        (x.images && x.images.length ? '<div class="msg-images">' + x.images.map((im) => '<img src="' + im.dataUrl + '" alt="' + esc(im.name) + '">').join('') + '</div>' : '') +
+        (x.images && x.images.length ? '<div class="msg-images">' + x.images.map((im) => {
+          if (im.dataUrl) return '<img src="' + im.dataUrl + '" alt="' + esc(im.name) + '">';
+          loadChatImage(id, im);
+          return '<span class="img-missing">' + (im.missing ? 'Image missing: ' : 'Loading ') + esc(im.name) + '</span>';
+        }).join('') + '</div>' : '') +
         esc(x.text || (x.role === 'assistant' ? '…' : '')) +
         (x.role === 'assistant' && x.text && !ui.runs[id] ? '<button type="button" class="msg-save" data-savereply="' + i + '">Save as draft</button>' : '') +
         '</div>').join('')
@@ -626,7 +630,7 @@ async function send(id) {
 
   list.push({ role: 'user', text, images: pending.map((a, i) => ({ name: a.name, dataUrl: a.dataUrl, path: imagePaths[i] })) });
   ui.attach[id] = [];
-  const reply = { role: 'assistant', text: '' };
+  const reply = { role: 'assistant', text: '', live: true };
   list.push(reply);
   ui.drafts[id] = '';
   const runId = Date.now() + '-' + Math.random().toString(36).slice(2);
@@ -647,6 +651,7 @@ async function send(id) {
   });
 
   if (ui.runs[id] === runId) delete ui.runs[id];
+  delete reply.live;
   if (chats[id] !== list) return; // removed from the canvas while it worked
   if (r.ok) {
     reply.text = r.text || reply.text || '(no output)';
@@ -676,7 +681,7 @@ function nowTime() { return new Date().toLocaleTimeString([], { hour: 'numeric',
 api.onSubStart(({ callId, agent, task, from }) => {
   if (!chats[agent]) chats[agent] = [];
   chats[agent].push({ role: 'task', text: task, from: from || 'the leader' });
-  const msg = { role: 'assistant', text: '' };
+  const msg = { role: 'assistant', text: '', live: true };
   chats[agent].push(msg);
   subCalls[callId] = { agent, msg, from: from || 'leader', list: chats[agent] };
   ui.runs[agent] = callId;
@@ -692,6 +697,7 @@ api.onSubChunk(({ callId, text }) => {
 api.onSubEnd(({ callId, agent, ok, text, error, remembered }) => {
   const c = subCalls[callId];
   delete subCalls[callId];
+  if (c) delete c.msg.live;
   if (ui.runs[agent] === callId) delete ui.runs[agent];
   if (!c || chats[agent] !== c.list) return; // removed from the canvas while it worked
   if (c) {
@@ -1061,6 +1067,7 @@ async function init() {
   // Shortcut hints: Cmd on Mac, Ctrl elsewhere.
   if (!IS_MAC) document.querySelectorAll('[title]').forEach((el) => { el.title = el.title.replace(/\bCmd\b/g, MOD); });
   loadSavedState(await api.loadState());
+  await restoreChats();
   // Check every tab: drop unknown models, fix the tree, give every agent a valid name unique across tabs.
   const startTab = ACTIVE;
   for (const t of TABS.slice()) {
@@ -1071,6 +1078,8 @@ async function init() {
     syncActiveTab();
   }
   if (ACTIVE !== startTab) { ACTIVE = startTab; putTabInS(currentTab()); }
+  pruneChats();
+  startChatStore();
   save();
   keyStatus = await api.keyStatus();
   bind();

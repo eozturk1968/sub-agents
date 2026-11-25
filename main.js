@@ -232,6 +232,35 @@ ipcMain.handle('models:edit', async () => {
 ipcMain.handle('state:load', () => readJson(file('state.json'), null));
 ipcMain.handle('state:save', (_e, s) => { fs.writeFileSync(file('state.json'), JSON.stringify(s, null, 2)); });
 
+// Chat history. Written to a temp file first, then renamed, so a crash can't leave half a file.
+function writeAtomic(p, text) {
+  const tmp = p + '.' + process.pid + '.tmp';
+  fs.writeFileSync(tmp, text);
+  fs.renameSync(tmp, p);
+}
+function saveChats(json) {
+  if (typeof json !== 'string') return false;
+  try { JSON.parse(json); } catch (e) { return false; }
+  writeAtomic(file('chats.json'), json);
+  return true;
+}
+ipcMain.handle('chats:load', () => readJson(file('chats.json'), null));
+ipcMain.handle('chats:save', (_e, json) => { try { return saveChats(json); } catch (e) { return false; } });
+ipcMain.on('chats:flush', (e, json) => { try { saveChats(json); } catch (err) { /* ignore */ } e.returnValue = true; });
+
+// Show a saved chat image again after a restart. Only image files, and not huge ones.
+const IMAGE_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' };
+ipcMain.handle('images:read', (_e, p) => {
+  try {
+    if (typeof p !== 'string' || !path.isAbsolute(p)) return null;
+    const type = IMAGE_TYPES[path.extname(p).toLowerCase()];
+    if (!type) return null;
+    const st = fs.statSync(p);
+    if (!st.isFile() || st.size > 25 * 1024 * 1024) return null;
+    return 'data:' + type + ';base64,' + fs.readFileSync(p).toString('base64');
+  } catch (e) { return null; }
+});
+
 ipcMain.handle('keys:status', () => {
   const k = loadKeys();
   return Object.fromEntries(Object.keys(k).map((p) => [p, true]));
