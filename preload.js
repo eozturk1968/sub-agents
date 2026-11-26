@@ -43,5 +43,11 @@ contextBridge.exposeInMainWorld('api', {
   onSubChunk: (cb) => ipcRenderer.on('sub:chunk', (_e, d) => cb(d)),
   onSubEnd: (cb) => ipcRenderer.on('sub:end', (_e, d) => cb(d)),
   onChunk: (cb) => ipcRenderer.on('chat:chunk', (_e, d) => cb(d)),
+  ptyCreate: (opts) => ipcRenderer.invoke('pty:create', opts),
+  ptyWrite: (id, data) => ipcRenderer.send('pty:write', id, data),
+  ptyResize: (id, cols, rows) => ipcRenderer.send('pty:resize', id, cols, rows),
+  ptyKill: (id) => ipcRenderer.send('pty:kill', id),
+  onPtyData: (cb) => ipcRenderer.on('pty:data', (_e, d) => cb(d)),
+  onPtyExit: (cb) => ipcRenderer.on('pty:exit', (_e, d) => cb(d)),
   onLoginUrl: (cb) => ipcRenderer.on('login:url', (_e, u) => cb(u))
 });

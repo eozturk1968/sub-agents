@@ -195,6 +195,7 @@ function renderNodes() {
       (ui.runs[n.name] ? '<span class="busy">working…</span>' : '') + '<span class="grow"></span>' +
       '<button type="button" class="icon-btn boxed" data-act="chat" aria-label="Open chat with ' + esc(n.name) + '">' + ICON.chat + '</button>' +
       '<button type="button" class="icon-btn boxed" data-act="role" aria-label="Role and memory for ' + esc(n.name) + '" title="Role and memory">' + ICON.role + '</button>' +
+      '<button type="button" class="icon-btn boxed' + (liveOpenFor(n.name) ? ' on' : '') + '" data-act="term" aria-label="Live terminal for ' + esc(n.name) + '" title="Live terminal">' + TERM_ICON + '</button>' +
       (lead ? '' : '<button type="button" class="btn xs" data-act="leader">Make leader</button>') +
       '<button type="button" class="icon-btn" data-act="remove" aria-label="Remove ' + esc(n.name) + '">' + ICON.x + '</button></div>' +
       '<div class="row">' + avatar(h, 32) + '<div class="col grow">' +
@@ -635,6 +636,7 @@ async function send(id) {
   ui.drafts[id] = '';
   const runId = Date.now() + '-' + Math.random().toString(36).slice(2);
   ui.runs[id] = runId;
+  liveStart(id, text, null);
   renderChat(id);
   renderNodes();
 
@@ -652,6 +654,7 @@ async function send(id) {
 
   if (ui.runs[id] === runId) delete ui.runs[id];
   delete reply.live;
+  if (chats[id] === list) liveEnd(id, r.ok, r.error);
   if (chats[id] !== list) return; // removed from the canvas while it worked
   if (r.ok) {
     reply.text = r.text || reply.text || '(no output)';
@@ -672,6 +675,7 @@ api.onChunk(({ runId, text }) => {
   const list = chats[id];
   const last = list[list.length - 1];
   if (last && last.role === 'assistant') last.text += text;
+  liveChunk(id, text);
   renderMessages(id);
 });
 
@@ -684,6 +688,8 @@ api.onSubStart(({ callId, agent, task, from }) => {
   const msg = { role: 'assistant', text: '', live: true };
   chats[agent].push(msg);
   subCalls[callId] = { agent, msg, from: from || 'leader', list: chats[agent] };
+  liveStart(agent, task, from || 'the leader');
+  if (from && from !== 'leader') liveSubCall(from, agent, task);
   ui.runs[agent] = callId;
   renderNodes();
   if (isOpen(agent)) renderChat(agent); else notify(agent);
@@ -692,6 +698,7 @@ api.onSubChunk(({ callId, text }) => {
   const c = subCalls[callId];
   if (!c) return;
   c.msg.text += text;
+  liveChunk(c.agent, text);
   renderMessages(c.agent);
 });
 api.onSubEnd(({ callId, agent, ok, text, error, remembered }) => {
@@ -699,6 +706,10 @@ api.onSubEnd(({ callId, agent, ok, text, error, remembered }) => {
   delete subCalls[callId];
   if (c) delete c.msg.live;
   if (ui.runs[agent] === callId) delete ui.runs[agent];
+  if (c && chats[agent] === c.list) {
+    liveEnd(agent, ok, error);
+    if (c.from && c.from !== 'leader') liveSubDone(c.from, agent, ok);
+  }
   if (!c || chats[agent] !== c.list) return; // removed from the canvas while it worked
   if (c) {
     if (ok) { c.msg.text = text || c.msg.text || '(no output)'; addMemoryNote(agent, remembered); }
@@ -768,7 +779,8 @@ async function renameAgent(n, next) {
   ui.open.forEach((w) => { if (w.id === old) w.id = next; });
   ui.bubbles = ui.bubbles.map((b) => (b === old ? next : b));
   if (ui.unread.delete(old)) ui.unread.add(next);
-  Object.values(subCalls).forEach((c) => { if (c.agent === old) c.agent = next; });
+  Object.values(subCalls).forEach((c) => { if (c.agent === old) c.agent = next; if (c.from === old) c.from = next; });
+  liveRename(old, next);
   const win = winEl(old);
   if (win) { win.dataset.id = next; win.setAttribute('aria-label', 'Chat with ' + next); }
   n.name = next;
@@ -790,6 +802,7 @@ async function migrateAgents() {
 // ---------- Events ----------
 function bind() {
   bindView();
+  bindTerminal();
   bindSettings();
   bindFiles();
   bindTeams();
@@ -874,6 +887,7 @@ function bind() {
     const n = S.nodes.find((o) => o.key === key);
     if (!n) return;
     if (b.dataset.act === 'role') { openRoleEditor(n.name); return; }
+    if (b.dataset.act === 'term') { openLiveTab(n.name); return; }
     if (b.dataset.act === 'chat') {
       if (isReady(n.modelId)) openChat(n.name);
       else openModal(n.modelId, { noAdd: true, agent: n.name });
@@ -1037,6 +1051,7 @@ async function archiveAgents(nodes) {
     const md = chatMarkdown(name);
     closeChat(name);
     delete chats[name]; delete lastCall[name]; delete ui.drafts[name]; delete ui.attach[name];
+    liveForget(name);
     if (ui.renaming === name) ui.renaming = null;
     let r;
     try { r = await api.archiveAgent(S.cwd, name, md); } catch (e) { r = { ok: false, files: [], error: e.message }; }

@@ -1,6 +1,6 @@
 {
   "name": "sub-agents",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "license": "UNLICENSED",
   "author": "Erdinc Ozturk",
@@ -13,6 +13,9 @@
     "dist:win": "electron-builder --win"
   },
   "dependencies": {
+    "@lydell/node-pty": "1.2.0-beta.18",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "cross-spawn": "^7.0.6"
   },
   "devDependencies": {
@@ -34,6 +37,7 @@
       "roles.js",
       "files.js",
       "platform.js",
+      "ptys.js",
       "models.json",
       "bin/**",
       "renderer/**",
@@ -41,7 +45,8 @@
       "package.json"
     ],
     "asarUnpack": [
-      "bin/**"
+      "bin/**",
+      "node_modules/@lydell/**"
     ],
     "mac": {
       "category": "public.app-category.developer-tools",
@@ -80,6 +85,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "shortcutName": "Sub-Agents"
-    }
+    },
+    "npmRebuild": false
   }
 }

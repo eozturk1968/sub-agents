@@ -156,6 +156,12 @@ You can open them in the Files tab and copy anything back into a new agent's rol
 - A **Claude** model that leads a team is only allowed to run the sub-agent command (on Windows: through Git Bash or PowerShell). Nothing else is auto-approved. To allow more (for example `Bash(python3:*)`, `Read`, `WebSearch`), click the gear button and add them under **Extra permissions for Claude leaders**, one per line.
 - A **Codex, Antigravity or Gemini** model that leads a team needs **Let leader run sub-agents** turned on. That runs Codex with `--sandbox danger-full-access`, Antigravity with `--dangerously-skip-permissions` and Gemini CLI with `--yolo`, so **they can run any command without asking**. Only turn it on with a project folder you're OK with them changing.
 
+### Terminal
+
+Click **Terminal** in the toolbar to open a terminal under the canvas. It's your normal shell (zsh or bash on a Mac, PowerShell on Windows), started in the current tab's project folder, so you can run `claude`, `codex`, `agy` or `subagent NAME "TASK"` without leaving the app. Press **+** for more tabs, drag the top edge to make it taller, and close a tab to end its shell. The panel's size is remembered, but shells don't survive a restart.
+
+Each agent card also has a terminal button. It opens a read-only **live view** of that agent: the task it got, everything its tool prints while the app runs it, the sub-agents it calls, and whether it finished. Open it any time during a run and it replays what's been printed so far. It only shows what the app is already running; it doesn't start anything. The live view keeps about the last 2,000 lines per agent and isn't saved.
+
 ## Models
 
 Click the gear button, then **Edit model list**. Save the file, then click **Reload**. (In the Mac app this edits a copy in the app's user data folder; when running with `npm start` it edits `models.json` in this folder.) Each entry has:

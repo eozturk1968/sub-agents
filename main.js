@@ -219,6 +219,9 @@ function createWindow() {
     }
   });
   win.removeMenu();
+  // A reload or a crashed page loses its terminal tabs, so end their shells.
+  win.webContents.on('did-start-loading', () => require('./ptys').killAll());
+  win.webContents.on('render-process-gone', () => require('./ptys').killAll());
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 }
 
@@ -394,6 +397,13 @@ ipcMain.handle('role:open', (_e, cwd, id) => {
 });
 ipcMain.handle('chat:stop', (_e, runId) => harness.stop(runId));
 
+// ---------- Terminal panel ----------
+const ptys = require('./ptys');
+ipcMain.handle('pty:create', (_e, opts) => ptys.create(opts, BIN_DIR, send));
+ipcMain.on('pty:write', (_e, id, data) => ptys.write(id, data));
+ipcMain.on('pty:resize', (_e, id, cols, rows) => ptys.resize(id, cols, rows));
+ipcMain.on('pty:kill', (_e, id) => ptys.kill(id));
+
 // Tools a Claude leader may use without asking: the sub-agent launcher, plus any extra
 // permissions added in Settings (for example Bash(python3:*) or Read).
 function claudeLeaderTools(state) {
@@ -410,5 +420,6 @@ if (!app.requestSingleInstanceLock()) {
   if (process.platform === 'win32') app.setAppUserModelId('com.erdincozturk.subagents');
   app.whenReady().then(() => { loadShellPath(); writeLauncher(); startBridge(); createWindow(); });
 }
+app.on('before-quit', () => { try { require('./ptys').killAll(); } catch (e) { /* not loaded */ } });
 app.on('quit', () => { try { fs.unlinkSync(BRIDGE_FILE); } catch (e) { /* already gone */ } });
 app.on('window-all-closed', () => app.quit());

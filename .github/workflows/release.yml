@@ -41,10 +41,29 @@ jobs:
           node-version: lts/*
           cache: npm
       - run: npm ci
+      # The terminal uses node-pty's prebuilt binaries. npm only installs the one for this
+      # runner's CPU, so on the Mac runner also add the other Mac CPU (both dmgs need theirs).
+      - name: Add both Mac terminal binaries
+        if: runner.os == 'macOS'
+        run: npm install --no-save --force @lydell/node-pty-darwin-x64@1.2.0-beta.18 @lydell/node-pty-darwin-arm64@1.2.0-beta.18
       # Unsigned build: no Apple or Windows signing certificate yet.
       - run: npm run ${{ matrix.script }} -- --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      # Fail the release if an installer is missing its terminal binary.
+      - name: Check terminal binaries are packaged
+        shell: bash
+        run: |
+          set -e
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            ls dist/mac-arm64/*.app/Contents/Resources/app.asar.unpacked/node_modules/@lydell/node-pty-darwin-arm64/prebuilds/darwin-arm64/pty.node
+            ls dist/mac/*.app/Contents/Resources/app.asar.unpacked/node_modules/@lydell/node-pty-darwin-x64/prebuilds/darwin-x64/pty.node
+            test -x dist/mac/*.app/Contents/Resources/app.asar.unpacked/node_modules/@lydell/node-pty-darwin-x64/prebuilds/darwin-x64/spawn-helper
+            test -x dist/mac-arm64/*.app/Contents/Resources/app.asar.unpacked/node_modules/@lydell/node-pty-darwin-arm64/prebuilds/darwin-arm64/spawn-helper
+          else
+            ls dist/win-unpacked/resources/app.asar.unpacked/node_modules/@lydell/node-pty-win32-x64/prebuilds/win32-x64/conpty.node
+            ls dist/win-unpacked/resources/app.asar.unpacked/node_modules/@lydell/node-pty-win32-x64/prebuilds/win32-x64/conpty/OpenConsole.exe
+          fi
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG }}
