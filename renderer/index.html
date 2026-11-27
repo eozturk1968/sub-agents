@@ -57,6 +57,8 @@
         <button type="button" class="vbtn fit" data-v="fit" title="Show all agents (Space)">Fit</button>
         <label class="scroll-zooms" title="On: scrolling zooms, like LTspice. Off: two-finger scroll moves, pinch zooms."><input type="checkbox" id="scroll-zooms"> Scroll zooms</label>
       </div>
+      <aside id="chatpanel" class="cp" aria-label="Chat" hidden></aside>
+      <button id="cp-pill" class="cp-pill" type="button" hidden></button>
       <div id="empty" class="empty">Drag a model here. The first one becomes the leader.</div>
     </div>
     <section id="term-panel" class="term-panel" aria-label="Terminal" hidden>
@@ -75,7 +77,6 @@
 </div>
 
 <div id="modal"></div>
-<div id="dock" class="dock"><div id="bubbles" class="bubbles" aria-label="Minimized chats"></div></div>
 
 <script src="view.js"></script>
 <script src="settings.js"></script>
@@ -86,6 +87,9 @@
 <script src="../node_modules/@xterm/xterm/lib/xterm.js"></script>
 <script src="../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
 <script src="terminal.js"></script>
+<script src="../node_modules/marked/lib/marked.umd.js"></script>
+<script src="../node_modules/dompurify/dist/purify.min.js"></script>
+<script src="chatpanel.js"></script>
 <script src="renderer.js"></script>
 </body>
 </html>

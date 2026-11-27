@@ -52,6 +52,9 @@ function serializeState() {
   out.tabs = TABS.map((t) => {
     const o = { id: t.id, title: t.title };
     TAB_FIELDS.forEach((f) => { o[f] = t[f]; });
+    // Which agent's chat is open in this tab, and whether it is shrunk to the pill.
+    const c = t.dock && t.dock.open && t.dock.open[0];
+    o.chat = c && c.id ? { id: c.id, min: !!c.min } : null;
     return o;
   });
   out.active = ACTIVE;
@@ -65,7 +68,12 @@ function loadSavedState(saved) {
   Object.keys(saved).forEach((k) => { if (!TAB_FIELDS.includes(k) && k !== 'tabs' && k !== 'active') globals[k] = saved[k]; });
   Object.assign(S, globals);
   if (Array.isArray(saved.tabs) && saved.tabs.length) {
-    TABS = saved.tabs.map((t) => Object.assign(blankTab(t.title || 'Team'), t, { dock: { open: [], bubbles: [] } }));
+    TABS = saved.tabs.map((t) => {
+      const c = t.chat && typeof t.chat.id === 'string' ? [{ id: t.chat.id, min: !!t.chat.min }] : [];
+      const o = Object.assign(blankTab(t.title || 'Team'), t, { dock: { open: c, bubbles: [] } });
+      delete o.chat;
+      return o;
+    });
   } else {
     const t = blankTab(saved.teamName || 'Team 1');
     TAB_FIELDS.forEach((f) => { if (saved[f] !== undefined) t[f] = saved[f]; });

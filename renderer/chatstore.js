@@ -11,7 +11,9 @@ let lastChatJson = null;
 function storedMessage(m) {
   const o = { role: m.role, text: m.text || '' };
   if (m.from) o.from = m.from;
-  if (m.images && m.images.length) o.images = m.images.map((im) => ({ name: im.name, path: im.path || null }));
+  if (m.images && m.images.length && !(m.files && m.files.length)) o.images = m.images.map((im) => ({ name: im.name, path: im.path || null }));
+  if (m.files && m.files.length) o.files = m.files.map((f) => ({ name: f.name, path: f.path || null, rel: f.rel || null, size: f.size == null ? null : f.size, image: !!f.image }));
+  if (m.elapsed) o.elapsed = m.elapsed;
   if (m.live) o.text = (o.text ? o.text + '\n' : '') + '(interrupted)';
   return o;
 }
@@ -49,6 +51,13 @@ async function restoreChats() {
       const o = { role: m.role, text: typeof m.text === 'string' ? m.text : '' };
       if (m.from) o.from = String(m.from);
       if (Array.isArray(m.images)) o.images = m.images.map((im) => ({ name: String((im && im.name) || 'image'), path: im && im.path ? String(im.path) : null }));
+      if (Array.isArray(m.files)) {
+        o.files = m.files.filter((f) => f && typeof f === 'object').map((f) => ({
+          name: String(f.name || 'file'), path: f.path ? String(f.path) : null, rel: f.rel ? String(f.rel) : null,
+          size: typeof f.size === 'number' ? f.size : null, image: !!f.image
+        }));
+      }
+      if (typeof m.elapsed === 'number') o.elapsed = m.elapsed;
       return o;
     });
   });

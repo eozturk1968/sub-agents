@@ -242,7 +242,7 @@ async function sendEditorToChat() {
   if (editorDirty() && !(await saveEditor())) return;
   const isDraft = e.rel.startsWith(DRAFTS + '/');
   if (e.kind === 'image') {
-    (ui.attach[id] || (ui.attach[id] = [])).push({ name: baseName(e.rel), dataUrl: e.dataUrl });
+    (ui.attach[id] || (ui.attach[id] = [])).push({ name: baseName(e.rel), path: S.cwd.replace(/[\\/]+$/, '') + '/' + e.rel, rel: e.rel, image: true, thumb: e.dataUrl, size: null });
   } else if (isDraft && e.kind === 'text') {
     ui.drafts[id] = (ui.drafts[id] ? ui.drafts[id] + '\n\n' : '') + e.text;
   } else {

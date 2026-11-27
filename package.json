@@ -1,6 +1,6 @@
 {
   "name": "sub-agents",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "license": "UNLICENSED",
   "author": "Erdinc Ozturk",
@@ -16,7 +16,9 @@
     "@lydell/node-pty": "1.2.0-beta.18",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
-    "cross-spawn": "^7.0.6"
+    "cross-spawn": "^7.0.6",
+    "dompurify": "^3.5.0",
+    "marked": "^18.3.0"
   },
   "devDependencies": {
     "electron": "^45.4.1",

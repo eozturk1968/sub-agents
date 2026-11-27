@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
   listModels: () => ipcRenderer.invoke('models:list'),
@@ -25,6 +25,11 @@ contextBridge.exposeInMainWorld('api', {
   remember: (cwd, id, reply) => ipcRenderer.invoke('role:remember', cwd, id, reply),
   openRole: (cwd, id) => ipcRenderer.invoke('role:open', cwd, id),
   saveImages: (cwd, files) => ipcRenderer.invoke('images:save', cwd, files),
+  addUploads: (cwd, items) => ipcRenderer.invoke('uploads:add', cwd, items),
+  pickUploads: () => ipcRenderer.invoke('uploads:pick'),
+  openUpload: (cwd, p) => ipcRenderer.invoke('upload:open', cwd, p),
+  fileInfo: (p) => ipcRenderer.invoke('file:info', p),
+  pathForFile: (f) => { try { return webUtils.getPathForFile(f) || ''; } catch (e) { return ''; } },
   fsList: (cwd, rel) => ipcRenderer.invoke('fs:list', cwd, rel),
   fsRead: (cwd, rel) => ipcRenderer.invoke('fs:read', cwd, rel),
   fsWrite: (cwd, rel, text) => ipcRenderer.invoke('fs:write', cwd, rel, text),

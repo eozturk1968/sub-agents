@@ -368,213 +368,13 @@ async function confirmModal() {
   if (name) openChat(name);
 }
 
-// ---------- Chat windows (Messenger style) ----------
-// ui.open: chats shown as windows along the bottom, oldest first.
-// ui.bubbles: chats shrunk to round bubbles on the left.
-const MAX_OPEN = 3;
-const isOpen = (id) => ui.open.some((w) => w.id === id);
-const winEl = (id) => [...document.querySelectorAll('#dock .chat')].find((el) => el.dataset.id === id) || null;
-
-function openChat(id) {
-  if (!agentNode(id)) return;
-  if (!chats[id]) chats[id] = [];
-  ui.bubbles = ui.bubbles.filter((b) => b !== id);
-  ui.unread.delete(id);
-  if (!isOpen(id)) {
-    ui.open.push({ id, size: 'small' });
-    while (ui.open.length > MAX_OPEN) ui.bubbles.unshift(ui.open.shift().id);
-  }
-  syncDock();
-  const el = winEl(id);
-  const d = el && el.querySelector('textarea');
-  if (d) d.focus();
-}
-function shrinkChat(id) {
-  ui.open = ui.open.filter((w) => w.id !== id);
-  if (!ui.bubbles.includes(id)) ui.bubbles.unshift(id);
-  syncDock();
-}
-function closeChat(id) {
-  ui.open = ui.open.filter((w) => w.id !== id);
-  ui.bubbles = ui.bubbles.filter((b) => b !== id);
-  ui.unread.delete(id);
-  syncDock();
-}
-// A message arrived for a chat that isn't open: show it as a bubble with a dot.
-function notify(id) {
-  if (isOpen(id)) return;
-  if (notifyOtherTab(id)) return;
-  ui.unread.add(id);
-  if (!ui.bubbles.includes(id)) ui.bubbles.unshift(id);
-  renderBubbles();
-}
-
-function syncDock() {
-  const dock = $('#dock');
-  ui.open = ui.open.filter((w) => agentNode(w.id));
-  const want = ui.open.map((w) => w.id);
-  [...dock.querySelectorAll('.chat')].forEach((el) => { if (!want.includes(el.dataset.id)) el.remove(); });
-  const current = [...dock.querySelectorAll('.chat')].map((el) => el.dataset.id);
-  want.forEach((id) => {
-    if (!winEl(id)) {
-      const el = document.createElement('section');
-      el.className = 'chat';
-      el.dataset.id = id;
-      el.setAttribute('aria-label', 'Chat with ' + id);
-      dock.appendChild(el);
-      renderChat(id);
-    }
-  });
-  if (current.join('|') !== want.filter((id) => current.includes(id)).join('|')) {
-    want.forEach((id) => dock.appendChild(winEl(id)));
-  }
-  renderBubbles();
-}
-
-function renderBubbles() {
-  ui.bubbles = ui.bubbles.filter((id) => agentNode(id));
-  $('#bubbles').innerHTML = ui.bubbles.map((id) => {
-    const h = aH(id);
-    const dot = ui.runs[id] ? '<span class="bubble-dot busy" aria-hidden="true"></span>'
-      : ui.unread.has(id) ? '<span class="bubble-dot" aria-hidden="true"></span>' : '';
-    return '<div class="bubble-wrap">' +
-      '<button type="button" class="bubble" data-open="' + esc(id) + '" title="' + esc(id) + '" aria-label="Open chat with ' + esc(id) + (ui.unread.has(id) ? ' (new message)' : '') + '" style="background:' + h.bg + ';color:' + h.fg + '">' + h.letter + dot + '</button>' +
-      '<span class="bubble-name">' + esc(id) + '</span>' +
-      '<button type="button" class="bubble-close" data-close="' + esc(id) + '" aria-label="Close chat with ' + esc(id) + '">' + ICON.x + '</button>' +
-      '</div>';
-  }).join('');
-}
-
-function renderAllChats() {
-  // Close windows and bubbles for agents that are no longer on the canvas.
-  if (ui.open.some((w) => !agentNode(w.id)) || ui.bubbles.some((b) => !agentNode(b))) syncDock();
-  ui.open.forEach((w) => renderChat(w.id));
-  renderBubbles();
-}
-
+// ---------- Chat: see chatpanel.js ----------
 function leaderInfo(id) {
   const node = agentNode(id);
   const subs = node ? readyChildren(node.key) : [];
   const isLead = subs.length > 0;
   const canRun = isLead && (agentModel(id).harness === 'claude' || S.allowLeaderRun);
   return { isLead, subs, canRun, isRoot: !!node && node.key === S.leader };
-}
-
-function renderChat(id) {
-  const el = winEl(id);
-  if (!el || !agentNode(id)) return;
-  const w = ui.open.find((x) => x.id === id);
-  const m = agentModel(id);
-  const h = HARNESS[m.harness];
-  const { isLead, subs, canRun } = leaderInfo(id);
-  const busy = !!ui.runs[id];
-  el.className = 'chat ' + (w ? w.size : 'small');
-
-  let html = '<header class="chat-head">' + avatar(h, 26) +
-    '<div class="col grow"><strong style="font-size:13px">' + esc(id) + '</strong><span class="tiny">' + esc(shortName(m.id)) + ' · ' + h.name + ' · ' + agentMethod(id) + '</span></div>' +
-    '<button type="button" class="icon-btn light" data-c="role" aria-label="Edit role" title="Role and memory">' + ICON.role + '</button>' +
-    '<button type="button" class="icon-btn light" data-c="clear" aria-label="Clear chat" title="Clear chat">' + ICON.trash + '</button>' +
-    '<button type="button" class="icon-btn light" data-c="min" aria-label="Minimize" title="Minimize">' + ICON.min + '</button>' +
-    '<button type="button" class="icon-btn light" data-c="size" aria-label="' + (w && w.size === 'large' ? 'Make smaller' : 'Make bigger') + '">' + ICON.expand + '</button>' +
-    '<button type="button" class="icon-btn light" data-c="close" aria-label="Close chat">' + ICON.x + '</button></header>';
-  if (isLead && subs.length) {
-    html += '<div class="leader-bar">' + (canRun
-      ? 'Leads a team. It can hand tasks to: '
-      : 'Leads a team. Turn on "Let leader run sub-agents" so ' + h.name + ' can call: ') +
-      subs.map((s) => esc(s.name)).join(', ') + '</div>';
-  }
-  html += '<div class="messages"></div>' +
-    '<div class="attach-row"></div>' +
-    '<form class="composer">' +
-    '<input type="file" class="file-input" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>' +
-    '<button type="button" class="attach-btn" data-c="attach" aria-label="Attach images" title="Attach images">' + ICON.clip + '</button>' +
-    '<label class="sr" for="draft-' + esc(id) + '">Message</label>' +
-    '<textarea id="draft-' + esc(id) + '" rows="1" placeholder="Message ' + esc(id) + '"></textarea>' +
-    (busy ? '<button type="button" class="btn" data-c="stop" style="height:44px">Stop</button>'
-      : '<button type="submit" class="send" aria-label="Send">' + ICON.send + '</button>') +
-    '</form>';
-  el.innerHTML = html;
-  renderMessages(id);
-
-  const d = el.querySelector('textarea');
-  d.value = ui.drafts[id] || '';
-  d.addEventListener('input', (e) => { ui.drafts[id] = e.target.value; });
-  d.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(id); } });
-  el.querySelector('form').addEventListener('submit', (e) => { e.preventDefault(); send(id); });
-
-  // Images: paperclip, paste, or drag and drop onto the window.
-  el.querySelector('.file-input').addEventListener('change', (e) => { addImages(id, e.target.files); e.target.value = ''; });
-  d.addEventListener('paste', (e) => {
-    const files = [...(e.clipboardData ? e.clipboardData.files : [])].filter((f) => IMAGE_TYPES.includes(f.type));
-    if (files.length) { e.preventDefault(); addImages(id, files); }
-  });
-  el.addEventListener('dragover', (e) => { if (hasFiles(e)) { e.preventDefault(); el.classList.add('drop'); } });
-  el.addEventListener('dragleave', (e) => { if (!el.contains(e.relatedTarget)) el.classList.remove('drop'); });
-  el.addEventListener('drop', (e) => {
-    if (!hasFiles(e)) return;
-    e.preventDefault();
-    el.classList.remove('drop');
-    addImages(id, e.dataTransfer.files);
-  });
-  renderAttachRow(id);
-}
-
-// ---------- Image attachments ----------
-const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
-const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
-const hasFiles = (e) => !!e.dataTransfer && [...e.dataTransfer.types].includes('Files');
-
-function readAsDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(r.result);
-    r.onerror = () => reject(r.error);
-    r.readAsDataURL(file);
-  });
-}
-
-async function addImages(id, fileList) {
-  const list = ui.attach[id] || (ui.attach[id] = []);
-  const skipped = [];
-  for (const f of [...fileList]) {
-    if (!IMAGE_TYPES.includes(f.type)) { skipped.push(f.name + ' (not PNG, JPG, GIF or WebP)'); continue; }
-    if (f.size > MAX_IMAGE_BYTES) { skipped.push(f.name + ' (over 20 MB)'); continue; }
-    const ext = f.type.split('/')[1].replace('jpeg', 'jpg');
-    list.push({ name: f.name && f.name !== 'image.png' ? f.name : 'pasted.' + ext, dataUrl: await readAsDataUrl(f) });
-  }
-  if (skipped.length) { chats[id].push({ role: 'error', text: 'Not attached: ' + skipped.join(', ') }); renderMessages(id); }
-  renderAttachRow(id);
-}
-
-function renderAttachRow(id) {
-  const el = winEl(id);
-  const row = el && el.querySelector('.attach-row');
-  if (!row) return;
-  const list = ui.attach[id] || [];
-  row.innerHTML = list.map((a, i) =>
-    '<div class="thumb"><img src="' + a.dataUrl + '" alt="' + esc(a.name) + '">' +
-    '<button type="button" class="thumb-x" data-unattach="' + i + '" aria-label="Remove ' + esc(a.name) + '">' + ICON.x + '</button></div>').join('');
-}
-
-function renderMessages(id) {
-  const el = winEl(id);
-  const box = el && el.querySelector('.messages');
-  if (!box) return;
-  const list = chats[id] || [];
-  box.innerHTML = list.length
-    ? list.map((x, i) => '<div class="msg ' + x.role + '">' +
-        (x.role === 'task' ? '<span class="msg-label">Task from ' + esc(x.from || 'the leader') + '</span>' : '') +
-        (x.role === 'note' ? '<span class="msg-label">Saved to memory</span>' : '') +
-        (x.images && x.images.length ? '<div class="msg-images">' + x.images.map((im) => {
-          if (im.dataUrl) return '<img src="' + im.dataUrl + '" alt="' + esc(im.name) + '">';
-          loadChatImage(id, im);
-          return '<span class="img-missing">' + (im.missing ? 'Image missing: ' : 'Loading ') + esc(im.name) + '</span>';
-        }).join('') + '</div>' : '') +
-        esc(x.text || (x.role === 'assistant' ? '…' : '')) +
-        (x.role === 'assistant' && x.text && !ui.runs[id] ? '<button type="button" class="msg-save" data-savereply="' + i + '">Save as draft</button>' : '') +
-        '</div>').join('')
-    : '<p class="muted small center">Messages go to ' + esc(aH(id).name) + ', working in ' + esc(S.cwd || 'your home folder') + '.</p>';
-  box.scrollTop = box.scrollHeight;
 }
 
 function leaderBrief(subs) {
@@ -597,8 +397,10 @@ function addMemoryNote(id, lines) {
 }
 
 async function send(id) {
-  const pending = ui.attach[id] || [];
-  const text = (ui.drafts[id] || '').trim() || (pending.length ? 'Please look at the attached image' + (pending.length > 1 ? 's.' : '.') : '');
+  const all = ui.attach[id] || [];
+  if (all.some((f) => f.pending)) return; // still copying files
+  const pending = all.filter((f) => f.path);
+  const text = (ui.drafts[id] || '').trim() || (pending.length ? 'Please look at the attached file' + (pending.length > 1 ? 's.' : '.') : '');
   if (!id || !text || ui.runs[id]) return;
   const m = agentModel(id);
   const node = agentNode(id);
@@ -611,27 +413,25 @@ async function send(id) {
   let prompt = (await api.rolePrompt(cwd, id)) + '\n\n';
   if (canRun) prompt += leaderBrief(subs) + '\n\n';
   if (history.length) {
-    prompt += 'Conversation so far:\n' + history.map((x) => (x.role === 'user' ? 'User: ' : x.role === 'task' ? 'Agent you report to: ' : 'Assistant: ') + x.text).join('\n') + '\n\n';
+    prompt += 'Conversation so far:\n' + history.map((x) => (x.role === 'user' ? 'User: ' : x.role === 'task' ? 'Agent you report to: ' : 'Assistant: ') + x.text +
+      (x.files && x.files.length ? ' [attached: ' + x.files.map((f) => f.rel || f.path).join(', ') + ']' : '')).join('\n') + '\n\n';
   }
-  // Save attached images into the project so every tool can open them.
-  let imagePaths = [];
+  // Attached files were copied into the project folder, so every tool can open them.
+  const imagePaths = pending.filter((f) => f.image).map((f) => f.path);
   if (pending.length) {
-    const saved = await api.saveImages(cwd, pending.map((a) => ({ name: a.name, dataUrl: a.dataUrl })));
-    if (!saved.ok) { chats[id].push({ role: 'error', text: 'Could not save the images: ' + saved.error }); renderMessages(id); return; }
-    imagePaths = saved.paths;
-    prompt += 'The user attached ' + (imagePaths.length === 1 ? 'an image' : imagePaths.length + ' images') +
-      '. Open and look at ' + (imagePaths.length === 1 ? 'it' : 'them') + ' before answering:\n' +
-      imagePaths.map((p) => '- ' + p).join('\n') +
-      '\nIf you hand a task about ' + (imagePaths.length === 1 ? 'this image' : 'these images') + ' to a sub-agent, include the file path' + (imagePaths.length === 1 ? '' : 's') + ' in the task.\n\n';
+    prompt += (cwd ? 'Attached files (in the project folder):\n' : 'Attached files:\n') +
+      pending.map((f) => '- ' + (f.rel || f.path)).join('\n') +
+      '\nOpen and read ' + (pending.length === 1 ? 'it' : 'them') + ' before answering. If you hand a task about ' +
+      (pending.length === 1 ? 'this file' : 'these files') + ' to a sub-agent, include the path' + (pending.length === 1 ? '' : 's') + ' in the task.\n\n';
   }
   prompt += 'User: ' + text;
 
   // Only pass the key for this model if it uses one. Sub-agent keys are handled by the app when the leader calls them.
   const providers = S.methods[node.modelId] === 'key' ? [hOf(node.modelId).provider] : [];
 
-  list.push({ role: 'user', text, images: pending.map((a, i) => ({ name: a.name, dataUrl: a.dataUrl, path: imagePaths[i] })) });
+  list.push({ role: 'user', text, files: pending.map((f) => ({ name: f.name, path: f.path, rel: f.rel, size: f.size, image: !!f.image, thumb: f.thumb || null, checked: true })) });
   ui.attach[id] = [];
-  const reply = { role: 'assistant', text: '', live: true };
+  const reply = { role: 'assistant', text: '', live: true, started: Date.now() };
   list.push(reply);
   ui.drafts[id] = '';
   const runId = Date.now() + '-' + Math.random().toString(36).slice(2);
@@ -654,6 +454,7 @@ async function send(id) {
 
   if (ui.runs[id] === runId) delete ui.runs[id];
   delete reply.live;
+  reply.elapsed = Date.now() - reply.started;
   if (chats[id] === list) liveEnd(id, r.ok, r.error);
   if (chats[id] !== list) return; // removed from the canvas while it worked
   if (r.ok) {
@@ -685,7 +486,7 @@ function nowTime() { return new Date().toLocaleTimeString([], { hour: 'numeric',
 api.onSubStart(({ callId, agent, task, from }) => {
   if (!chats[agent]) chats[agent] = [];
   chats[agent].push({ role: 'task', text: task, from: from || 'the leader' });
-  const msg = { role: 'assistant', text: '', live: true };
+  const msg = { role: 'assistant', text: '', live: true, started: Date.now() };
   chats[agent].push(msg);
   subCalls[callId] = { agent, msg, from: from || 'leader', list: chats[agent] };
   liveStart(agent, task, from || 'the leader');
@@ -693,6 +494,7 @@ api.onSubStart(({ callId, agent, task, from }) => {
   ui.runs[agent] = callId;
   renderNodes();
   if (isOpen(agent)) renderChat(agent); else notify(agent);
+  renderBubbles();
 });
 api.onSubChunk(({ callId, text }) => {
   const c = subCalls[callId];
@@ -704,7 +506,7 @@ api.onSubChunk(({ callId, text }) => {
 api.onSubEnd(({ callId, agent, ok, text, error, remembered }) => {
   const c = subCalls[callId];
   delete subCalls[callId];
-  if (c) delete c.msg.live;
+  if (c) { delete c.msg.live; c.msg.elapsed = Date.now() - (c.msg.started || Date.now()); }
   if (ui.runs[agent] === callId) delete ui.runs[agent];
   if (c && chats[agent] === c.list) {
     liveEnd(agent, ok, error);
@@ -718,6 +520,7 @@ api.onSubEnd(({ callId, agent, ok, text, error, remembered }) => {
   lastCall[agent] = { time: nowTime(), ok, from: c ? shortName(c.from) : 'leader' };
   renderNodes();
   if (isOpen(agent)) renderChat(agent); else notify(agent);
+  renderBubbles();
 });
 
 // ---------- Role editor ----------
@@ -808,8 +611,8 @@ function bind() {
   bindTeams();
   bindTabs();
   // A file dropped outside a drop area would replace the app with that file. Block it.
-  document.addEventListener('dragover', (e) => { if (hasFiles(e)) e.preventDefault(); });
-  document.addEventListener('drop', (e) => { if (hasFiles(e)) e.preventDefault(); });
+  document.addEventListener('dragover', (e) => { if (hasDragFiles(e)) e.preventDefault(); });
+  document.addEventListener('drop', (e) => { if (hasDragFiles(e)) e.preventDefault(); });
 
   $('#search').addEventListener('input', (e) => { ui.query = e.target.value; renderList(); });
 
@@ -973,38 +776,7 @@ function bind() {
     }
   });
 
-  $('#dock').addEventListener('click', (e) => {
-    const ob = e.target.closest('[data-open]');
-    if (ob) { openChat(ob.dataset.open); return; }
-    const cb = e.target.closest('[data-close]');
-    if (cb) { closeChat(cb.dataset.close); return; }
-    const sr = e.target.closest('[data-savereply]');
-    if (sr) { saveReplyAsDraft(sr.closest('.chat').dataset.id, Number(sr.dataset.savereply)); return; }
-    const ux = e.target.closest('[data-unattach]');
-    if (ux) {
-      const wid = ux.closest('.chat').dataset.id;
-      (ui.attach[wid] || []).splice(Number(ux.dataset.unattach), 1);
-      renderAttachRow(wid);
-      return;
-    }
-    const b = e.target.closest('[data-c]');
-    if (!b) return;
-    const win = b.closest('.chat');
-    const id = win.dataset.id;
-    const act = b.dataset.c;
-    if (act === 'close') closeChat(id);
-    else if (act === 'min') shrinkChat(id);
-    else if (act === 'size') {
-      const w = ui.open.find((x) => x.id === id);
-      w.size = w.size === 'large' ? 'small' : 'large';
-      win.style.width = ''; win.style.height = '';
-      renderChat(id);
-    }
-    else if (act === 'clear') { if (!ui.runs[id]) { chats[id] = []; renderChat(id); } }
-    else if (act === 'stop') { const r = ui.runs[id]; if (r) api.stop(r); }
-    else if (act === 'role') openRoleEditor(id);
-    else if (act === 'attach') win.querySelector('.file-input').click();
-  });
+  bindChatPanel();
 
   $('#folder').addEventListener('click', async () => {
     const p = await api.pickFolder();
@@ -1029,7 +801,7 @@ function bind() {
 // ---------- Removing agents ----------
 // The chat as a readable Markdown file.
 function chatMarkdown(name) {
-  const list = (chats[name] || []).filter((x) => x.text || (x.images && x.images.length));
+  const list = (chats[name] || []).filter((x) => x.text || (x.images && x.images.length) || (x.files && x.files.length));
   if (!list.length) return '';
   const who = (x) => (x.role === 'user' ? 'You' : x.role === 'task' ? 'Task from ' + (x.from || 'the leader')
     : x.role === 'note' ? 'Saved to memory' : x.role === 'error' ? 'Error' : name);
@@ -1037,7 +809,8 @@ function chatMarkdown(name) {
   list.forEach((x) => {
     out.push('**' + who(x) + '**:', '');
     if (x.text) out.push(x.text, '');
-    if (x.images && x.images.length) out.push('Images: ' + x.images.map((im) => im.path || im.name).join(', '), '');
+    if (x.files && x.files.length) out.push('Attachments: ' + x.files.map((f) => f.path || f.name).join(', '), '');
+    else if (x.images && x.images.length) out.push('Images: ' + x.images.map((im) => im.path || im.name).join(', '), '');
   });
   return out.join('\n');
 }

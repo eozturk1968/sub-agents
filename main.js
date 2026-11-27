@@ -222,6 +222,15 @@ function createWindow() {
   // A reload or a crashed page loses its terminal tabs, so end their shells.
   win.webContents.on('did-start-loading', () => require('./ptys').killAll());
   win.webContents.on('render-process-gone', () => require('./ptys').killAll());
+  // The app never navigates away or opens new windows. Links go to the normal browser.
+  win.webContents.on('will-navigate', (e, url) => {
+    e.preventDefault();
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+  });
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 }
 
@@ -289,8 +298,84 @@ ipcMain.handle('folder:pick', async () => {
   return r.canceled ? null : r.filePaths[0];
 });
 
+// Links from chat replies open in the normal web browser. Only http and https.
 ipcMain.handle('open:url', (_e, url) => {
-  if (/^https:\/\//.test(url)) shell.openExternal(url);
+  if (typeof url === 'string' && /^https?:\/\/[^\s]+$/i.test(url)) shell.openExternal(url);
+});
+
+// ---------- Chat attachments ----------
+// Any file. Copied into PROJECT/.sub-agents/uploads/YYYY-MM-DD/ (or ~/.sub-agents/uploads/...) so every tool can read it.
+const UPLOAD_IMAGES = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp']);
+function uploadDir(cwd) {
+  const d = new Date();
+  const day = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  return path.join(cwd || os.homedir(), '.sub-agents', 'uploads', day);
+}
+function safeUploadName(name) {
+  const base = path.basename(String(name || 'file')).replace(/[\u0000-\u001f<>:"/\\|?*]/g, '_').replace(/^\.+/, '').trim().slice(0, 120);
+  return base || 'file';
+}
+function uniquePath(dir, name) {
+  const ext = path.extname(name);
+  const stem = name.slice(0, name.length - ext.length) || 'file';
+  let p = path.join(dir, name);
+  for (let i = 2; fs.existsSync(p); i++) p = path.join(dir, stem + '-' + i + ext);
+  return p;
+}
+ipcMain.handle('uploads:add', async (_e, cwd, items) => {
+  const out = [];
+  const errors = [];
+  let dir;
+  try { dir = uploadDir(typeof cwd === 'string' && cwd ? cwd : null); fs.mkdirSync(dir, { recursive: true }); }
+  catch (e) { return { ok: false, files: [], errors: ['Could not make the uploads folder: ' + e.message] }; }
+  for (const it of Array.isArray(items) ? items.slice(0, 50) : []) {
+    try {
+      let dest;
+      if (it && typeof it.path === 'string' && it.path) {
+        const st = fs.statSync(it.path);
+        if (st.isDirectory()) { errors.push(path.basename(it.path) + ' is a folder. Attach the files inside it, or zip it first.'); continue; }
+        if (!st.isFile()) { errors.push(path.basename(it.path) + ' is not a regular file.'); continue; }
+        dest = uniquePath(dir, safeUploadName(path.basename(it.path)));
+        await fs.promises.copyFile(it.path, dest);
+      } else if (it && typeof it.dataUrl === 'string') {
+        const m = /^data:([^;,]*)(;base64)?,(.*)$/s.exec(it.dataUrl);
+        if (!m) { errors.push('Could not read ' + (it.name || 'a pasted file') + '.'); continue; }
+        dest = uniquePath(dir, safeUploadName(it.name || 'pasted'));
+        await fs.promises.writeFile(dest, m[2] ? Buffer.from(m[3], 'base64') : decodeURIComponent(m[3]));
+      } else continue;
+      const size = fs.statSync(dest).size;
+      const rel = cwd ? path.relative(cwd, dest).split(path.sep).join('/') : null;
+      out.push({ name: path.basename(dest), path: dest, rel, size, image: UPLOAD_IMAGES.has(path.extname(dest).toLowerCase()) });
+    } catch (e) {
+      errors.push('Could not attach ' + (it && (it.name || (it.path && path.basename(it.path))) || 'a file') + ': ' + e.message);
+    }
+  }
+  return { ok: true, files: out, errors };
+});
+ipcMain.handle('uploads:pick', async () => {
+  const r = await dialog.showOpenDialog(win, { title: 'Attach files', properties: ['openFile', 'multiSelections'] });
+  return r.canceled ? [] : r.filePaths;
+});
+// Is a chat attachment still there?
+ipcMain.handle('file:info', (_e, p) => {
+  try {
+    if (typeof p !== 'string' || !path.isAbsolute(p)) return { ok: false };
+    const st = fs.statSync(p);
+    return st.isFile() ? { ok: true, size: st.size } : { ok: false };
+  } catch (e) { return { ok: false }; }
+});
+// Open a chat attachment in its app. Only files in an uploads/attachments folder or inside the project.
+ipcMain.handle('upload:open', async (_e, cwd, p) => {
+  try {
+    if (typeof p !== 'string' || !path.isAbsolute(p)) return { ok: false, error: 'Not a file path.' };
+    const real = path.resolve(p);
+    const inside = (dir) => { const r = path.relative(dir, real); return !!dir && r && !r.startsWith('..') && !path.isAbsolute(r); };
+    const ok = /[\\/]\.sub-agents[\\/](uploads|attachments)[\\/]/.test(real) || (typeof cwd === 'string' && inside(path.resolve(cwd)));
+    if (!ok) return { ok: false, error: 'That file is outside the project folder.' };
+    if (!fs.existsSync(real) || !fs.statSync(real).isFile()) return { ok: false, missing: true, error: 'The file is missing.' };
+    const err = await shell.openPath(real);
+    return err ? { ok: false, error: err } : { ok: true };
+  } catch (e) { return { ok: false, error: e.message }; }
 });
 
 // opts: { runId, harness, model, prompt, cwd, leaderTools, fullAccess, providers }
